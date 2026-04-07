@@ -23,7 +23,7 @@ npx @moejay/modspec ./spec/
 modspec ships with skills for spec authoring and brownfield adoption. Install them with:
 
 ```bash
-npx skills install @moejay/modspec
+npx skills install moejay/modspec
 ```
 
 This installs two skills:
@@ -183,7 +183,7 @@ npx @moejay/modspec --help                        Show help
 
 ## Brownfield adoption
 
-Already have a codebase? Install the skills (`npx skills install @moejay/modspec`) and use `modspec-init` to analyze your existing code and generate spec + feature files automatically. It identifies modules, their dependencies, and public interfaces from your project structure and import patterns.
+Already have a codebase? Install the skills (`npx skills install moejay/modspec`) and use `modspec-init` to analyze your existing code and generate spec + feature files automatically. It identifies modules, their dependencies, and public interfaces from your project structure and import patterns.
 
 ## License
 
