@@ -1,4 +1,4 @@
-Feature: Repo Onboarding
+Feature: repo-onboarding
   Adding a repository to the system.
 
   Scenario: Onboard repo by owner/repo

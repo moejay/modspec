@@ -4,10 +4,12 @@ import { parseSpecDirectory } from "../src/parser.js";
 import { generateHTML } from "../src/generator.js";
 import { createModspecServer } from "../src/server.js";
 import { parseCliArgs } from "../src/cli.js";
-import { writeFile, mkdtemp } from "fs/promises";
+import { checkForUpdate } from "../src/version.js";
+import { writeFile, mkdtemp, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, dirname } from "path";
 import { existsSync } from "fs";
+import { createInterface } from "readline";
 
 const HELP_TEXT = `
 modspec — Visualize spec file dependencies as an interactive graph
@@ -20,13 +22,25 @@ Usage:
 Options:
   --output, -o  Save the HTML file to the specified path instead of serving
   --port        Port for the dev server (default: 3333)
+  -y, --yes     Auto-create the spec directory if it doesn't exist
   --help, -h    Show this help message
 
 Examples:
   modspec ./spec/
   modspec ./spec/ --port 4000
   modspec ./spec/ --output graph.html
+  modspec ./spec/ -y
 `;
+
+async function promptUser(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
 
 async function main() {
   const opts = parseCliArgs(process.argv.slice(2));
@@ -41,11 +55,27 @@ async function main() {
     process.exit(1);
   }
 
+  // Check for updates (non-blocking)
+  checkForUpdate().catch(() => {});
+
   const dirPath = resolve(opts.specDir);
 
   if (!existsSync(dirPath)) {
-    console.error(`Error: Directory not found: ${dirPath}`);
-    process.exit(1);
+    if (opts.yes) {
+      await mkdir(dirPath, { recursive: true });
+      console.log(`Created spec directory: ${dirPath}`);
+    } else {
+      const answer = await promptUser(
+        `Directory not found: ${dirPath}\nCreate it? [y/N] `,
+      );
+      if (answer === "y" || answer === "yes") {
+        await mkdir(dirPath, { recursive: true });
+        console.log(`Created spec directory: ${dirPath}`);
+      } else {
+        console.error("Aborted.");
+        process.exit(1);
+      }
+    }
   }
 
   // Parse specs with project root (parent of spec directory)

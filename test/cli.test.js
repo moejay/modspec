@@ -59,4 +59,25 @@ describe("parseCliArgs", () => {
     const result = parseCliArgs(["./specs", "--port"]);
     expect(result.error).toContain("--port requires a number");
   });
+
+  it("defaults yes to false", () => {
+    const result = parseCliArgs(["./specs"]);
+    expect(result.yes).toBe(false);
+  });
+
+  it("parses -y flag", () => {
+    const result = parseCliArgs(["./specs", "-y"]);
+    expect(result.yes).toBe(true);
+  });
+
+  it("parses --yes flag", () => {
+    const result = parseCliArgs(["./specs", "--yes"]);
+    expect(result.yes).toBe(true);
+  });
+
+  it("combines -y with other flags", () => {
+    const result = parseCliArgs(["./specs", "-y", "--port", "5000"]);
+    expect(result.yes).toBe(true);
+    expect(result.port).toBe(5000);
+  });
 });

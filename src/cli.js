@@ -37,5 +37,8 @@ export function parseCliArgs(args) {
     port = Number(portStr);
   }
 
-  return { specDir, mode, outputPath, port, help: false };
+  // Parse -y / --yes flag (auto-create directory)
+  const yes = args.includes("-y") || args.includes("--yes");
+
+  return { specDir, mode, outputPath, port, yes, help: false };
 }

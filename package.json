@@ -1,11 +1,36 @@
 {
-  "name": "modspec",
-  "version": "1.0.0",
-  "description": "Parse spec files with YAML frontmatter and visualize as an interactive dependency graph",
+  "name": "@moejay/modspec",
+  "version": "0.2.0",
+  "description": "Spec-driven dependency graph visualizer with composable modules and feature tracking",
   "type": "module",
   "bin": {
-    "modspec": "./bin/modspec.js"
+    "modspec": "./bin/modspec.js",
+    "@moejay/modspec": "./bin/modspec.js"
   },
+  "main": "./src/parser.js",
+  "files": [
+    "bin/",
+    "src/",
+    "skills/",
+    "README.md"
+  ],
+  "keywords": [
+    "spec",
+    "dependency-graph",
+    "visualization",
+    "gherkin",
+    "markdown",
+    "frontmatter",
+    "d3",
+    "modular",
+    "architecture"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moejay/modspec.git"
+  },
+  "homepage": "https://moejay.github.io/modspec",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"

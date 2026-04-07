@@ -19,31 +19,42 @@ describe("parseSpecFile", () => {
     expect(result).toEqual({
       name: "Bootstrap",
       description: "One-time project scaffolding",
+      group: "foundation",
+      tags: ["setup", "init"],
       depends_on: [],
       features: "features/bootstrap/",
       body: "# Bootstrap\n\nThis is the bootstrap spec.\n",
     });
   });
 
-  it("parses a spec file with multiple dependencies", async () => {
+  it("parses a spec file with rich depends_on (mixed format)", async () => {
     const result = await parseSpecFile(join(fixturesDir, "with-deps.md"));
 
     expect(result).toMatchObject({
       name: "Repos",
       description: "Repo onboarding, config parsing, CRUD",
-      depends_on: ["persistence", "server-api"],
+      group: "data",
+      tags: ["crud", "api"],
+      depends_on: [
+        { name: "persistence", uses: ["data-storage", "query-interface"] },
+        { name: "server-api", uses: [] },
+      ],
       features: "features/repos/",
     });
     expect(result).toHaveProperty("body");
   });
 
-  it("parses a spec file with a single dependency", async () => {
+  it("parses a spec file with rich depends_on (single dep with uses)", async () => {
     const result = await parseSpecFile(join(fixturesDir, "single-dep.md"));
 
     expect(result).toMatchObject({
       name: "Persistence",
       description: "SQLite database layer",
-      depends_on: ["bootstrap"],
+      group: "infrastructure",
+      tags: ["database", "storage"],
+      depends_on: [
+        { name: "bootstrap", uses: ["project-scaffolding"] },
+      ],
       features: "features/persistence/",
     });
     expect(result).toHaveProperty("body");
@@ -61,6 +72,8 @@ describe("parseSpecFile", () => {
     expect(result).toMatchObject({
       name: "Minimal",
       description: "",
+      group: "",
+      tags: [],
       depends_on: [],
       features: "",
     });
@@ -113,6 +126,18 @@ describe("parseSpecDirectory", () => {
     });
   });
 
+  it("includes group and tags for parsed specs", async () => {
+    const results = await parseSpecDirectory(fixturesDir);
+
+    const bootstrap = results.find((s) => s.name === "Bootstrap");
+    expect(bootstrap.group).toBe("foundation");
+    expect(bootstrap.tags).toEqual(["setup", "init"]);
+
+    const minimal = results.find((s) => s.name === "Minimal");
+    expect(minimal.group).toBe("");
+    expect(minimal.tags).toEqual([]);
+  });
+
   it("includes featureFiles when projectRoot is provided", async () => {
     const results = await parseSpecDirectory(fixturesDir, {
       projectRoot: fixturesDir,
@@ -124,16 +149,20 @@ describe("parseSpecDirectory", () => {
     expect(bootstrap.featureFiles.length).toBe(2);
 
     const names = bootstrap.featureFiles.map((f) => f.name).sort();
-    expect(names).toEqual(["Health Endpoint", "Project Scaffolding"]);
+    expect(names).toEqual(["health-endpoint", "project-scaffolding"]);
   });
 
-  it("returns empty featureFiles when features dir does not exist", async () => {
+  it("resolves featureFiles for persistence when projectRoot is provided", async () => {
     const results = await parseSpecDirectory(fixturesDir, {
       projectRoot: fixturesDir,
     });
 
     const persistence = results.find((s) => s.name === "Persistence");
-    expect(persistence.featureFiles).toEqual([]);
+    expect(persistence.featureFiles).toBeDefined();
+    expect(persistence.featureFiles.length).toBe(2);
+
+    const names = persistence.featureFiles.map((f) => f.name).sort();
+    expect(names).toEqual(["data-storage", "query-interface"]);
   });
 
   it("returns empty featureFiles when no projectRoot provided", async () => {
@@ -142,17 +171,27 @@ describe("parseSpecDirectory", () => {
     const bootstrap = results.find((s) => s.name === "Bootstrap");
     expect(bootstrap.featureFiles).toEqual([]);
   });
+
+  it("normalizes depends_on to {name, uses} format", async () => {
+    const results = await parseSpecDirectory(fixturesDir);
+
+    const repos = results.find((s) => s.name === "Repos");
+    expect(repos.depends_on).toEqual([
+      { name: "persistence", uses: ["data-storage", "query-interface"] },
+      { name: "server-api", uses: [] },
+    ]);
+  });
 });
 
 describe("parseFeatureFile", () => {
   const featureFixtures = join(fixturesDir, "features", "bootstrap");
 
-  it("extracts Feature name from a .feature file", async () => {
+  it("extracts kebab-case Feature name from a .feature file", async () => {
     const result = await parseFeatureFile(
       join(featureFixtures, "scaffolding.feature"),
     );
 
-    expect(result.name).toBe("Project Scaffolding");
+    expect(result.name).toBe("project-scaffolding");
   });
 
   it("extracts all Scenario names", async () => {
@@ -186,7 +225,7 @@ describe("parseFeatureFile", () => {
     );
 
     expect(result.filename).toBe("scaffolding.feature");
-    expect(result.content).toContain("Feature: Project Scaffolding");
+    expect(result.content).toContain("Feature: project-scaffolding");
   });
 
   it("includes the relative path", async () => {
@@ -207,7 +246,7 @@ describe("parseFeatureDirectory", () => {
 
     expect(results.length).toBe(2);
     const names = results.map((f) => f.name).sort();
-    expect(names).toEqual(["Health Endpoint", "Project Scaffolding"]);
+    expect(names).toEqual(["health-endpoint", "project-scaffolding"]);
   });
 
   it("returns empty array for nonexistent directory", async () => {

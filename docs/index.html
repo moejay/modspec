@@ -337,6 +337,7 @@
     <ul class="links">
       <li><a href="#features">Features</a></li>
       <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="spec.html">Spec Format</a></li>
       <li><a href="https://github.com/moejay/modspec">GitHub</a></li>
     </ul>
   </div>
@@ -345,13 +346,13 @@
 <section class="hero">
   <span class="badge">Open Source</span>
   <h1>Spec-driven dependency graphs</h1>
-  <p>Define project specs in markdown. Declare dependencies with YAML frontmatter. Describe behavior with Gherkin. Visualize everything as a live, interactive graph.</p>
+  <p>Define project specs in markdown. Declare dependencies and feature contracts with YAML frontmatter. Group modules, track features, and visualize everything as a live, interactive graph.</p>
   <div class="hero-actions">
     <a href="https://github.com/moejay/modspec" class="btn btn-primary">Get started</a>
     <a href="#how-it-works" class="btn btn-secondary">See how it works</a>
   </div>
   <div class="install-block">
-    <span class="prompt">$</span> npx modspec ./spec/
+    <span class="prompt">$</span> npx @moejay/modspec ./spec/
   </div>
 </section>
 
@@ -381,13 +382,13 @@
     </div>
     <div class="feature-card">
       <span class="icon">&#9745;</span>
-      <h3>Gherkin integration</h3>
-      <p>Feature files are parsed and displayed with full scenario steps &mdash; Given, When, Then &mdash; right in the side panel.</p>
+      <h3>Feature tracking</h3>
+      <p>Declare which features each module uses from its dependencies. Gherkin feature files define the interface &mdash; <code>uses</code> tracks the contracts.</p>
     </div>
     <div class="feature-card">
-      <span class="icon">&#128196;</span>
-      <h3>Static export</h3>
-      <p>Generate a self-contained HTML file you can share, commit, or host anywhere. No server needed.</p>
+      <span class="icon">&#9881;</span>
+      <h3>Group clustering</h3>
+      <p>Organize specs into groups. Modules in the same group are visually clustered with colored hulls in the graph.</p>
     </div>
   </div>
 </section>
@@ -398,7 +399,7 @@
   <div class="steps">
     <div class="step">
       <h3>Write specs</h3>
-      <p>Create <code>.md</code> files with YAML frontmatter declaring <code>name</code>, <code>depends_on</code>, and optionally a <code>features</code> path.</p>
+      <p>Create <code>.md</code> files with YAML frontmatter declaring <code>name</code>, <code>depends_on</code> with <code>uses</code>, <code>group</code>, <code>tags</code>, and a <code>features</code> path.</p>
     </div>
     <div class="step">
       <h3>Add features</h3>
@@ -414,10 +415,13 @@
     <div class="section-label">Example spec file</div>
     <div class="example-block">
       <div class="fm">---</div>
-      <div><span class="key">name:</span> <span class="val">Persistence</span></div>
+      <div><span class="key">name:</span> <span class="val">persistence</span></div>
       <div><span class="key">description:</span> <span class="val">SQLite database layer</span></div>
+      <div><span class="key">group:</span> <span class="val">infrastructure</span></div>
+      <div><span class="key">tags:</span> <span class="val">[database, storage]</span></div>
       <div><span class="key">depends_on:</span></div>
-      <div>&nbsp;&nbsp;<span class="val">- bootstrap</span></div>
+      <div>&nbsp;&nbsp;- <span class="key">name:</span> <span class="val">bootstrap</span></div>
+      <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">uses:</span> <span class="val">[project-scaffolding]</span></div>
       <div><span class="key">features:</span> <span class="val">features/persistence/</span></div>
       <div class="fm">---</div>
       <br>

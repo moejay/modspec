@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>modspec — Spec Format Reference</title>
+  <meta name="description" content="The modspec spec format: markdown files with YAML frontmatter for dependency graphs, feature tracking, and composable modules.">
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --surface: #16213e;
+      --border: #0f3460;
+      --accent: #e94560;
+      --accent-glow: rgba(233, 69, 96, 0.25);
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --text-muted: #555;
+      --code-bg: #0d0d1a;
+      --teal: #53a8b6;
+      --radius: 12px;
+      --max-w: 960px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      background: rgba(15, 15, 26, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    nav .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+      letter-spacing: 0.5px;
+    }
+
+    nav .links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    nav .links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    nav .links a:hover { color: var(--text); }
+    nav .links a.active { color: var(--accent); }
+
+    .content {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 120px 24px 80px;
+    }
+
+    .content h1 {
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--teal) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .content .subtitle {
+      color: var(--text-dim);
+      font-size: 18px;
+      margin-bottom: 48px;
+    }
+
+    .content h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin: 48px 0 16px;
+      color: var(--text);
+    }
+
+    .content h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 32px 0 12px;
+      color: var(--teal);
+    }
+
+    .content p {
+      margin-bottom: 16px;
+      color: var(--text-dim);
+      font-size: 15px;
+    }
+
+    .content ul, .content ol {
+      margin: 8px 0 16px 24px;
+      color: var(--text-dim);
+      font-size: 15px;
+    }
+
+    .content li { margin-bottom: 6px; }
+
+    .content code {
+      background: var(--code-bg);
+      color: var(--teal);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: "Fira Code", "Consolas", monospace;
+    }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: 14px;
+      line-height: 1.8;
+      overflow-x: auto;
+      margin: 16px 0 24px;
+    }
+
+    .code-block .fm { color: var(--text-muted); }
+    .code-block .key { color: var(--accent); }
+    .code-block .val { color: var(--teal); }
+    .code-block .comment { color: var(--text-muted); font-style: italic; }
+    .code-block .body { color: var(--text-dim); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td { color: var(--text-dim); }
+    td code { font-size: 12px; }
+
+    .callout {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+
+    .callout p { margin-bottom: 0; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 40px 24px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a { color: var(--text-dim); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 600px) {
+      .content { padding: 100px 20px 60px; }
+      nav .links { gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <a href="index.html" class="logo">modspec</a>
+    <ul class="links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="spec.html" class="active">Spec Format</a></li>
+      <li><a href="https://github.com/moejay/modspec">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="content">
+  <h1>The modspec Spec Format</h1>
+  <p class="subtitle">A spec is a markdown file with YAML frontmatter. It's the source of truth for your project's module structure, dependencies, and feature contracts.</p>
+
+  <h2>Anatomy of a spec file</h2>
+
+  <div class="code-block">
+    <div class="fm">---</div>
+    <div><span class="key">name:</span> <span class="val">persistence</span></div>
+    <div><span class="key">description:</span> <span class="val">SQLite database layer for local storage</span></div>
+    <div><span class="key">group:</span> <span class="val">infrastructure</span></div>
+    <div><span class="key">tags:</span> <span class="val">[database, storage]</span></div>
+    <div><span class="key">depends_on:</span></div>
+    <div>&nbsp;&nbsp;- <span class="key">name:</span> <span class="val">bootstrap</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">uses:</span> <span class="val">[project-scaffolding, health-endpoint]</span></div>
+    <div><span class="key">features:</span> <span class="val">features/persistence/</span></div>
+    <div class="fm">---</div>
+    <br>
+    <div class="body"># Persistence</div>
+    <br>
+    <div class="body">Handles the database abstraction layer.</div>
+    <div class="body">Uses SQLite for local-first storage.</div>
+  </div>
+
+  <h2>Frontmatter fields</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Required</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>name</code></td>
+        <td>Yes</td>
+        <td><code>string</code></td>
+        <td>Unique identifier. How other specs reference it in <code>depends_on</code>.</td>
+      </tr>
+      <tr>
+        <td><code>description</code></td>
+        <td>No</td>
+        <td><code>string</code></td>
+        <td>Short summary. Shown in the graph info panel.</td>
+      </tr>
+      <tr>
+        <td><code>group</code></td>
+        <td>No</td>
+        <td><code>string</code></td>
+        <td>Logical grouping. Specs in the same group are visually clustered.</td>
+      </tr>
+      <tr>
+        <td><code>tags</code></td>
+        <td>No</td>
+        <td><code>string[]</code></td>
+        <td>Tags for filtering and categorization.</td>
+      </tr>
+      <tr>
+        <td><code>depends_on</code></td>
+        <td>No</td>
+        <td><code>array</code></td>
+        <td>Dependencies. Supports plain strings or <code>{name, uses}</code> objects.</td>
+      </tr>
+      <tr>
+        <td><code>features</code></td>
+        <td>No</td>
+        <td><code>string</code></td>
+        <td>Relative path to a directory of <code>.feature</code> files.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Dependencies</h2>
+
+  <p>The <code>depends_on</code> field supports two formats that can be mixed freely:</p>
+
+  <h3>Simple format</h3>
+  <div class="code-block">
+    <div><span class="key">depends_on:</span></div>
+    <div>&nbsp;&nbsp;- <span class="val">bootstrap</span></div>
+    <div>&nbsp;&nbsp;- <span class="val">config</span></div>
+  </div>
+
+  <h3>Rich format (with feature references)</h3>
+  <div class="code-block">
+    <div><span class="key">depends_on:</span></div>
+    <div>&nbsp;&nbsp;- <span class="key">name:</span> <span class="val">bootstrap</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">uses:</span> <span class="val">[project-scaffolding, health-endpoint]</span></div>
+    <div>&nbsp;&nbsp;- <span class="key">name:</span> <span class="val">persistence</span></div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">uses:</span> <span class="val">[data-storage, query-interface]</span></div>
+  </div>
+
+  <div class="callout">
+    <p>The <code>uses</code> array references <code>Feature:</code> names declared in the parent spec's <code>.feature</code> files. This creates a traceable contract — you know exactly which capabilities each module relies on.</p>
+  </div>
+
+  <h2>Feature files</h2>
+
+  <p>Features are defined in Gherkin <code>.feature</code> files. They serve as the <strong>public interface</strong> of a spec — other specs declare which features they depend on via <code>uses</code>.</p>
+
+  <h3>Naming rules</h3>
+  <ul>
+    <li>Feature names must be <strong>kebab-case</strong>: <code>Feature: data-storage</code></li>
+    <li>File names should match: <code>data-storage.feature</code></li>
+    <li>The <code>uses</code> references must match the <code>Feature:</code> name exactly</li>
+  </ul>
+
+  <h3>Example feature file</h3>
+  <div class="code-block">
+    <div><span class="key">Feature:</span> <span class="val">data-storage</span></div>
+    <div class="body">&nbsp;&nbsp;CRUD operations for persistent entities.</div>
+    <br>
+    <div>&nbsp;&nbsp;<span class="key">Scenario:</span> <span class="val">Store and retrieve an entity</span></div>
+    <div class="body">&nbsp;&nbsp;&nbsp;&nbsp;Given an empty data store</div>
+    <div class="body">&nbsp;&nbsp;&nbsp;&nbsp;When I store entity "foo" with value "bar"</div>
+    <div class="body">&nbsp;&nbsp;&nbsp;&nbsp;Then retrieving "foo" returns "bar"</div>
+  </div>
+
+  <h2>Groups</h2>
+
+  <p>Specs with the same <code>group</code> value are visually clustered in the graph with a colored hull behind them. Use groups to organize by architectural layer or domain:</p>
+
+  <ul>
+    <li><code>foundation</code> — bootstrap, config, shared utilities</li>
+    <li><code>infrastructure</code> — database, caching, messaging</li>
+    <li><code>domain</code> — core business logic</li>
+    <li><code>api</code> — HTTP endpoints, GraphQL</li>
+    <li><code>ui</code> — frontend components</li>
+  </ul>
+
+  <h2>Composability</h2>
+
+  <p>Specs are designed as composable modules. The dependency graph captures not just <em>what</em> depends on <em>what</em>, but <em>which features</em> each module needs from its dependencies.</p>
+
+  <ol>
+    <li><strong>Provider spec</strong> declares features via <code>.feature</code> files</li>
+    <li><strong>Consumer spec</strong> declares which features it needs via <code>uses</code></li>
+    <li>The graph visualizes these contracts as <strong>labeled edges</strong></li>
+  </ol>
+
+  <p>This makes it clear when a dependency change might break downstream consumers — you can see exactly which features are in use.</p>
+
+  <h2>Example project</h2>
+
+  <div class="code-block">
+    <div class="comment"># spec/bootstrap.md</div>
+    <div><span class="key">name:</span> <span class="val">bootstrap</span> &nbsp; <span class="key">group:</span> <span class="val">foundation</span></div>
+    <div><span class="key">features:</span> <span class="val">features/bootstrap/</span></div>
+    <br>
+    <div class="comment"># spec/persistence.md</div>
+    <div><span class="key">name:</span> <span class="val">persistence</span> &nbsp; <span class="key">group:</span> <span class="val">infrastructure</span></div>
+    <div><span class="key">depends_on:</span> <span class="val">[{name: bootstrap, uses: [project-scaffolding]}]</span></div>
+    <div><span class="key">features:</span> <span class="val">features/persistence/</span></div>
+    <br>
+    <div class="comment"># spec/auth.md</div>
+    <div><span class="key">name:</span> <span class="val">auth</span> &nbsp; <span class="key">group:</span> <span class="val">infrastructure</span></div>
+    <div><span class="key">depends_on:</span> <span class="val">[{name: bootstrap, uses: [health-endpoint]}]</span></div>
+    <div><span class="key">features:</span> <span class="val">features/auth/</span></div>
+    <br>
+    <div class="comment"># spec/repos.md</div>
+    <div><span class="key">name:</span> <span class="val">repos</span> &nbsp; <span class="key">group:</span> <span class="val">data</span></div>
+    <div><span class="key">depends_on:</span></div>
+    <div>&nbsp;&nbsp;<span class="val">- {name: persistence, uses: [data-storage, query-interface]}</span></div>
+    <div>&nbsp;&nbsp;<span class="val">- {name: auth, uses: [user-login]}</span></div>
+  </div>
+</div>
+
+<footer>
+  <p>modspec &mdash; built for spec-driven development &middot; <a href="https://github.com/moejay/modspec">GitHub</a></p>
+</footer>
+
+</body>
+</html>

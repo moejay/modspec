@@ -1,5 +1,5 @@
 @bootstrap
-Feature: Project Scaffolding
+Feature: project-scaffolding
   The project compiles and all tooling works from a fresh checkout.
 
   Scenario: Clean build with zero warnings

@@ -3,6 +3,26 @@ import { readFile, readdir, access } from "fs/promises";
 import { join, extname, relative, basename } from "path";
 
 /**
+ * Normalize a depends_on entry to the canonical { name, uses } form.
+ * Accepts both plain strings and objects with name/uses.
+ *
+ * @param {string|Object} entry
+ * @returns {Object} { name: string, uses: string[] }
+ */
+function normalizeDep(entry) {
+  if (typeof entry === "string") {
+    return { name: entry, uses: [] };
+  }
+  if (entry && typeof entry === "object" && entry.name) {
+    return {
+      name: entry.name,
+      uses: Array.isArray(entry.uses) ? entry.uses : [],
+    };
+  }
+  return null;
+}
+
+/**
  * Parse a single markdown file and extract modspec frontmatter.
  * Returns null if the file lacks valid modspec frontmatter (must have `name`).
  */
@@ -14,10 +34,16 @@ export async function parseSpecFile(filePath) {
     return null;
   }
 
+  // Normalize depends_on: support both string[] and {name, uses}[] formats
+  const rawDeps = data.depends_on || [];
+  const depends_on = rawDeps.map(normalizeDep).filter(Boolean);
+
   return {
     name: data.name,
     description: data.description || "",
-    depends_on: data.depends_on || [],
+    group: data.group || "",
+    tags: Array.isArray(data.tags) ? data.tags : [],
+    depends_on,
     features: data.features || "",
     body: body.trim() ? body.trim() + "\n" : "",
   };

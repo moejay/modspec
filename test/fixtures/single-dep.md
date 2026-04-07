@@ -1,8 +1,11 @@
 ---
 name: Persistence
 description: SQLite database layer
+group: infrastructure
+tags: [database, storage]
 depends_on:
-  - bootstrap
+  - name: bootstrap
+    uses: [project-scaffolding]
 features: features/persistence/
 ---
 

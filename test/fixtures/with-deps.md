@@ -1,8 +1,11 @@
 ---
 name: Repos
 description: Repo onboarding, config parsing, CRUD
+group: data
+tags: [crud, api]
 depends_on:
-  - persistence
+  - name: persistence
+    uses: [data-storage, query-interface]
   - server-api
 features: features/repos/
 ---

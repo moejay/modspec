@@ -1,4 +1,4 @@
-Feature: Health Endpoint
+Feature: health-endpoint
   Verifies the health check endpoint is functional.
 
   Scenario: GET /health returns 200

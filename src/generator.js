@@ -56,9 +56,11 @@ export function generateHTML(specs, options = {}) {
       const newLinks = [];
       newSpecs.forEach(spec => {
         (spec.depends_on || []).forEach(dep => {
-          const target = newSpecs.find(s => s.name.toLowerCase() === dep.toLowerCase());
+          const depName = typeof dep === 'string' ? dep : dep.name;
+          const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
+          const target = newSpecs.find(s => s.name.toLowerCase() === depName.toLowerCase());
           if (target) {
-            newLinks.push({ source: spec.name, target: target.name });
+            newLinks.push({ source: spec.name, target: target.name, uses });
           }
         });
       });
@@ -81,7 +83,8 @@ export function generateHTML(specs, options = {}) {
           return 0;
         }
         const maxParent = Math.max(...spec.depends_on.map(d => {
-          const target = newSpecs.find(s => s.name.toLowerCase() === d.toLowerCase());
+          const depName = typeof d === 'string' ? d : d.name;
+          const target = newSpecs.find(s => s.name.toLowerCase() === depName.toLowerCase());
           return target ? newCalcDepth(target.name) : 0;
         }));
         newDepthMemo[name] = maxParent + 1;
@@ -122,6 +125,16 @@ export function generateHTML(specs, options = {}) {
         .attr("class", "link")
         .attr("marker-end", "url(#arrowhead)");
 
+      // Rebind link labels
+      const linkLabelSel = g.selectAll(".link-label").data(
+        links.filter(l => l.uses && l.uses.length > 0),
+        d => (d.source.id || d.source) + '-' + (d.target.id || d.target)
+      );
+      linkLabelSel.exit().remove();
+      linkLabelSel.enter().append("text")
+        .attr("class", "link-label")
+        .text(d => d.uses.join(', '));
+
       const nodeSel = g.selectAll(".node").data(nodes, d => d.id);
       nodeSel.exit().remove();
       const nodeEnter = nodeSel.enter().append("g")
@@ -150,6 +163,9 @@ export function generateHTML(specs, options = {}) {
         .attr("dy", d => (14 + (dependentsCount[d.id] || 0) * 4) + 16)
         .text(d => d.name);
 
+      // Update group hulls
+      updateGroupHulls();
+
       // If panel is open, refresh its content without resetting tab or clobbering edits
       if (selectedNode) {
         const updated = nodes.find(n => n.id === selectedNode.id);
@@ -157,16 +173,11 @@ export function generateHTML(specs, options = {}) {
           selectedNode = updated;
           // Update metadata
           document.getElementById("panel-name").textContent = updated.name;
-          document.getElementById("panel-description").textContent = updated.description || "\u2014";
-          document.getElementById("panel-features").textContent = updated.features || "\u2014";
-          const depsContainer = document.getElementById("panel-deps");
-          if (updated.depends_on && updated.depends_on.length > 0) {
-            depsContainer.innerHTML = updated.depends_on
-              .map(dep => '<span class="dep-tag">' + dep + '</span>')
-              .join("");
-          } else {
-            depsContainer.textContent = "None (root node)";
-          }
+          document.getElementById("panel-description").textContent = updated.description || "\\u2014";
+          document.getElementById("panel-features-path").textContent = updated.features || "\\u2014";
+          document.getElementById("panel-group").textContent = updated.group || "\\u2014";
+          document.getElementById("panel-tags").textContent = (updated.tags && updated.tags.length > 0) ? updated.tags.join(', ') : "\\u2014";
+          renderPanelDeps(updated);
           // Only re-render tab content if not actively editing
           const specEditArea = document.getElementById('spec-edit-area');
           if (!specEditArea) {
@@ -319,6 +330,30 @@ export function generateHTML(specs, options = {}) {
       fill-opacity: 0.6;
     }
 
+    .link-label {
+      fill: #888;
+      font-size: 9px;
+      text-anchor: middle;
+      pointer-events: none;
+      dominant-baseline: central;
+    }
+
+    .group-hull {
+      fill-opacity: 0.06;
+      stroke-opacity: 0.3;
+      stroke-width: 1.5px;
+      stroke-dasharray: 4 2;
+    }
+
+    .group-label {
+      font-size: 11px;
+      font-weight: 600;
+      fill-opacity: 0.5;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      pointer-events: none;
+    }
+
     #info-panel {
       position: fixed;
       top: 0;
@@ -373,6 +408,36 @@ export function generateHTML(specs, options = {}) {
       border-radius: 4px;
       font-size: 12px;
       margin: 2px 4px 2px 0;
+    }
+
+    #info-panel .uses-tag {
+      display: inline-block;
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      margin: 1px 2px;
+    }
+
+    #info-panel .group-tag {
+      display: inline-block;
+      background: rgba(83, 168, 182, 0.15);
+      color: #53a8b6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    #info-panel .tag-pill {
+      display: inline-block;
+      background: #0d0d1a;
+      color: #888;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      margin: 2px 4px 2px 0;
+      border: 1px solid #333;
     }
 
     #info-panel .close-btn {
@@ -704,12 +769,20 @@ export function generateHTML(specs, options = {}) {
         <div class="value" id="panel-description"></div>
       </div>
       <div class="field">
+        <label>Group</label>
+        <div class="value" id="panel-group"></div>
+      </div>
+      <div class="field">
+        <label>Tags</label>
+        <div class="value" id="panel-tags"></div>
+      </div>
+      <div class="field">
         <label>Dependencies</label>
         <div class="value" id="panel-deps"></div>
       </div>
       <div class="field">
         <label>Features Path</label>
-        <div class="value" id="panel-features"></div>
+        <div class="value" id="panel-features-path"></div>
       </div>
     </div>
     <div class="panel-tabs">
@@ -760,6 +833,30 @@ export function generateHTML(specs, options = {}) {
         specBtn.classList.remove('active');
         featuresBtn.classList.add('active');
       }
+    }
+
+    // Render panel dependencies with uses tags
+    function renderPanelDeps(d) {
+      const depsContainer = document.getElementById("panel-deps");
+      if (!d.depends_on || d.depends_on.length === 0) {
+        depsContainer.textContent = "None (root node)";
+        return;
+      }
+      let html = '';
+      d.depends_on.forEach(dep => {
+        const depName = typeof dep === 'string' ? dep : dep.name;
+        const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
+        html += '<div style="margin-bottom:6px;">';
+        html += '<span class="dep-tag">' + escapeHtml(depName) + '</span>';
+        if (uses.length > 0) {
+          html += '<br>';
+          uses.forEach(u => {
+            html += '<span class="uses-tag">' + escapeHtml(u) + '</span>';
+          });
+        }
+        html += '</div>';
+      });
+      depsContainer.innerHTML = html;
     }
 
     // Render features tab content
@@ -837,10 +934,11 @@ export function generateHTML(specs, options = {}) {
 
     specs.forEach(spec => {
       (spec.depends_on || []).forEach(dep => {
-        // Find the actual node name (case-insensitive match)
-        const target = specs.find(s => s.name.toLowerCase() === dep.toLowerCase());
+        const depName = typeof dep === 'string' ? dep : dep.name;
+        const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
+        const target = specs.find(s => s.name.toLowerCase() === depName.toLowerCase());
         if (target) {
-          links.push({ source: spec.name, target: target.name });
+          links.push({ source: spec.name, target: target.name, uses });
         }
       });
     });
@@ -862,7 +960,8 @@ export function generateHTML(specs, options = {}) {
         return 0;
       }
       const maxParent = Math.max(...spec.depends_on.map(d => {
-        const target = specs.find(s => s.name.toLowerCase() === d.toLowerCase());
+        const depName = typeof d === 'string' ? d : d.name;
+        const target = specs.find(s => s.name.toLowerCase() === depName.toLowerCase());
         return target ? calcDepth(target.name, memo) : 0;
       }));
       memo[name] = maxParent + 1;
@@ -875,6 +974,10 @@ export function generateHTML(specs, options = {}) {
 
     const colorScale = d3.scaleSequential(d3.interpolateCool)
       .domain([0, Math.max(maxDepth, 1)]);
+
+    // Group colors
+    const groups = [...new Set(specs.map(s => s.group).filter(Boolean))];
+    const groupColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(groups);
 
     // SVG setup
     const svg = d3.select("#graph");
@@ -903,6 +1006,10 @@ export function generateHTML(specs, options = {}) {
       .attr("d", "M0,-4L8,0L0,4")
       .attr("class", "link-arrow");
 
+    // Group hulls layer (drawn behind everything)
+    const hullGroup = g.append("g").attr("class", "hulls");
+    const hullLabelGroup = g.append("g").attr("class", "hull-labels");
+
     // Layout state
     let currentLayout = 'force';
 
@@ -919,6 +1026,13 @@ export function generateHTML(specs, options = {}) {
       .join("line")
       .attr("class", "link")
       .attr("marker-end", "url(#arrowhead)");
+
+    // Draw link labels (feature uses)
+    const linkLabel = g.selectAll(".link-label")
+      .data(links.filter(l => l.uses && l.uses.length > 0))
+      .join("text")
+      .attr("class", "link-label")
+      .text(d => d.uses.join(', '));
 
     // Draw nodes
     const node = g.selectAll(".node")
@@ -952,16 +1066,17 @@ export function generateHTML(specs, options = {}) {
       node.classed("selected", n => n.id === d.id);
       document.getElementById("panel-name").textContent = d.name;
       document.getElementById("panel-description").textContent = d.description || "\\u2014";
-      document.getElementById("panel-features").textContent = d.features || "\\u2014";
+      document.getElementById("panel-features-path").textContent = d.features || "\\u2014";
+      document.getElementById("panel-group").textContent = d.group || "\\u2014";
 
-      const depsContainer = document.getElementById("panel-deps");
-      if (d.depends_on && d.depends_on.length > 0) {
-        depsContainer.innerHTML = d.depends_on
-          .map(dep => '<span class="dep-tag">' + dep + '</span>')
-          .join("");
+      const tagsContainer = document.getElementById("panel-tags");
+      if (d.tags && d.tags.length > 0) {
+        tagsContainer.innerHTML = d.tags.map(t => '<span class="tag-pill">' + escapeHtml(t) + '</span>').join('');
       } else {
-        depsContainer.textContent = "None (root node)";
+        tagsContainer.textContent = "\\u2014";
       }
+
+      renderPanelDeps(d);
 
       // Render spec body
       renderSpecBody(d);
@@ -985,7 +1100,71 @@ export function generateHTML(specs, options = {}) {
       selectedNode = null;
     }
 
-    // Simulation tick — updates positions for links and nodes
+    // Group hull rendering
+    function updateGroupHulls() {
+      const groupMap = {};
+      nodes.forEach(n => {
+        if (n.group) {
+          if (!groupMap[n.group]) groupMap[n.group] = [];
+          groupMap[n.group].push(n);
+        }
+      });
+
+      const hullData = Object.entries(groupMap)
+        .filter(([, members]) => members.length >= 2)
+        .map(([group, members]) => {
+          const points = [];
+          const pad = 40;
+          members.forEach(m => {
+            const r = 14 + (dependentsCount[m.id] || 0) * 4 + pad;
+            // Add points around each node for a rounder hull
+            for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+              points.push([m.x + Math.cos(a) * r, m.y + Math.sin(a) * r]);
+            }
+          });
+          return { group, points, members };
+        });
+
+      const hulls = hullGroup.selectAll(".group-hull")
+        .data(hullData, d => d.group);
+
+      hulls.exit().remove();
+
+      hulls.enter()
+        .append("path")
+        .attr("class", "group-hull")
+        .merge(hulls)
+        .attr("d", d => {
+          const hull = d3.polygonHull(d.points);
+          return hull ? "M" + hull.join("L") + "Z" : "";
+        })
+        .attr("fill", d => groupColorScale(d.group))
+        .attr("stroke", d => groupColorScale(d.group));
+
+      // Group labels
+      const labels = hullLabelGroup.selectAll(".group-label")
+        .data(hullData, d => d.group);
+
+      labels.exit().remove();
+
+      labels.enter()
+        .append("text")
+        .attr("class", "group-label")
+        .merge(labels)
+        .text(d => d.group)
+        .attr("x", d => {
+          const xs = d.members.map(m => m.x);
+          return (Math.min(...xs) + Math.max(...xs)) / 2;
+        })
+        .attr("y", d => {
+          const ys = d.members.map(m => m.y);
+          return Math.min(...ys) - 50;
+        })
+        .attr("text-anchor", "middle")
+        .attr("fill", d => groupColorScale(d.group));
+    }
+
+    // Simulation tick — updates positions for links, labels, nodes, and hulls
     function tickUpdate() {
       link
         .attr("x1", d => d.source.x)
@@ -993,7 +1172,13 @@ export function generateHTML(specs, options = {}) {
         .attr("x2", d => d.target.x)
         .attr("y2", d => d.target.y);
 
+      linkLabel
+        .attr("x", d => (d.source.x + d.target.x) / 2)
+        .attr("y", d => (d.source.y + d.target.y) / 2 - 6);
+
       node.attr("transform", d => "translate(" + d.x + "," + d.y + ")");
+
+      updateGroupHulls();
     }
 
     simulation.on("tick", tickUpdate);

@@ -5,6 +5,8 @@ const sampleSpecs = [
   {
     name: "Bootstrap",
     description: "One-time project scaffolding",
+    group: "foundation",
+    tags: ["setup", "init"],
     depends_on: [],
     features: "features/bootstrap/",
     body: "# Bootstrap\n\nThis is the bootstrap spec.\n",
@@ -12,14 +14,21 @@ const sampleSpecs = [
   {
     name: "Persistence",
     description: "SQLite database layer",
-    depends_on: ["bootstrap"],
+    group: "infrastructure",
+    tags: ["database"],
+    depends_on: [{ name: "bootstrap", uses: ["project-scaffolding"] }],
     features: "features/persistence/",
     body: "# Persistence\n\nHandles DB operations.\n",
   },
   {
     name: "Repos",
     description: "Repo onboarding, config parsing, CRUD",
-    depends_on: ["persistence", "server-api"],
+    group: "data",
+    tags: ["crud", "api"],
+    depends_on: [
+      { name: "persistence", uses: ["data-storage", "query-interface"] },
+      { name: "server-api", uses: [] },
+    ],
     features: "features/repos/",
     body: "",
   },
@@ -68,7 +77,14 @@ describe("generateHTML", () => {
     expect(html).toContain('id="panel-name"');
     expect(html).toContain('id="panel-description"');
     expect(html).toContain('id="panel-deps"');
-    expect(html).toContain('id="panel-features"');
+    expect(html).toContain('id="panel-features-path"');
+  });
+
+  it("includes group and tags fields in the info panel", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain('id="panel-group"');
+    expect(html).toContain('id="panel-tags"');
   });
 
   it("includes force simulation with drag, zoom, and collision", () => {
@@ -94,8 +110,6 @@ describe("generateHTML", () => {
     expect(html).toContain("[]");
   });
 
-  // New tests for markdown panel feature
-
   it("includes a markdown body section in the info panel", () => {
     const html = generateHTML(sampleSpecs);
 
@@ -111,9 +125,7 @@ describe("generateHTML", () => {
   it("includes markdown styling for dark theme", () => {
     const html = generateHTML(sampleSpecs);
 
-    // Code block styling
     expect(html).toContain("#0d0d1a");
-    // Body text color
     expect(html).toContain("#ccc");
   });
 
@@ -128,8 +140,6 @@ describe("generateHTML", () => {
 
     expect(html).toContain("This is the bootstrap spec.");
   });
-
-  // New tests for live reload mode
 
   it("includes SSE client code when liveReload is true", () => {
     const html = generateHTML(sampleSpecs, { liveReload: true });
@@ -149,8 +159,6 @@ describe("generateHTML", () => {
 
     expect(html).toContain("updateGraph");
   });
-
-  // Tabbed panel tests
 
   it("includes Spec and Features tab buttons", () => {
     const html = generateHTML(sampleSpecs);
@@ -178,8 +186,6 @@ describe("generateHTML", () => {
     expect(html).toContain('id="panel-spec-tab"');
   });
 
-  // Edit button tests
-
   it("includes edit button for spec body", () => {
     const html = generateHTML(sampleSpecs, { liveReload: true });
 
@@ -204,5 +210,52 @@ describe("generateHTML", () => {
     const html = generateHTML(sampleSpecs);
 
     expect(html).toContain("renderFeatures");
+  });
+
+  // New tests for group and feature uses
+
+  it("includes group hull rendering", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain("group-hull");
+    expect(html).toContain("updateGroupHulls");
+    expect(html).toContain("polygonHull");
+  });
+
+  it("includes group color scale", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain("groupColorScale");
+    expect(html).toContain("schemeTableau10");
+  });
+
+  it("includes link labels for feature uses", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain("link-label");
+    expect(html).toContain("linkLabel");
+  });
+
+  it("includes uses tags styling in side panel", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain("uses-tag");
+    expect(html).toContain("renderPanelDeps");
+  });
+
+  it("embeds group and tags data in specs JSON", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain('"foundation"');
+    expect(html).toContain('"infrastructure"');
+    expect(html).toContain('"setup"');
+  });
+
+  it("embeds uses data in depends_on within specs JSON", () => {
+    const html = generateHTML(sampleSpecs);
+
+    expect(html).toContain('"data-storage"');
+    expect(html).toContain('"query-interface"');
+    expect(html).toContain('"project-scaffolding"');
   });
 });
