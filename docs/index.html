@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>modspec — Spec-driven dependency graphs</title>
+  <meta name="description" content="Define project specs in markdown with YAML frontmatter. Visualize dependencies as an interactive graph. Gherkin features built in.">
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --surface: #16213e;
+      --border: #0f3460;
+      --accent: #e94560;
+      --accent-glow: rgba(233, 69, 96, 0.25);
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --text-muted: #555;
+      --code-bg: #0d0d1a;
+      --teal: #53a8b6;
+      --radius: 12px;
+      --max-w: 960px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      background: rgba(15, 15, 26, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    nav .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      text-decoration: none;
+      letter-spacing: 0.5px;
+    }
+
+    nav .links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    nav .links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    nav .links a:hover { color: var(--text); }
+
+    /* ---- HERO ---- */
+    .hero {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 160px 24px 100px;
+      text-align: center;
+    }
+
+    .hero .badge {
+      display: inline-block;
+      background: var(--accent-glow);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 99px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--teal) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: var(--text-dim);
+      max-width: 580px;
+      margin: 0 auto 40px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn:hover { transform: translateY(-2px); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 24px var(--accent-glow);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* ---- CODE BLOCK ---- */
+    .install-block {
+      max-width: 480px;
+      margin: 48px auto 0;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: 15px;
+      color: var(--teal);
+      text-align: left;
+      position: relative;
+    }
+
+    .install-block .prompt { color: var(--text-muted); user-select: none; }
+
+    /* ---- FEATURES GRID ---- */
+    .section {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 100px 24px;
+    }
+
+    .section-label {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .section h2 {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 56px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+
+    .feature-card .icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    /* ---- HOW IT WORKS ---- */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 32px;
+      counter-reset: step;
+    }
+
+    .step {
+      position: relative;
+      padding: 32px 24px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      top: -14px;
+      left: 24px;
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .step p {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    .step code {
+      background: var(--code-bg);
+      color: var(--teal);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: "Fira Code", "Consolas", monospace;
+    }
+
+    /* ---- SPEC EXAMPLE ---- */
+    .example-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: 14px;
+      line-height: 1.8;
+      overflow-x: auto;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .example-block .fm { color: var(--text-muted); }
+    .example-block .key { color: var(--accent); }
+    .example-block .val { color: var(--teal); }
+    .example-block .body { color: var(--text-dim); }
+
+    /* ---- FOOTER ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 40px 24px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--text-dim);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--text); }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 600px) {
+      .hero { padding: 120px 20px 60px; }
+      .section { padding: 60px 20px; }
+      nav .links { gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <a href="#" class="logo">modspec</a>
+    <ul class="links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="https://github.com/moe-the-techie/modspec">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<section class="hero">
+  <span class="badge">Open Source</span>
+  <h1>Spec-driven dependency graphs</h1>
+  <p>Define project specs in markdown. Declare dependencies with YAML frontmatter. Describe behavior with Gherkin. Visualize everything as a live, interactive graph.</p>
+  <div class="hero-actions">
+    <a href="https://github.com/moe-the-techie/modspec" class="btn btn-primary">Get started</a>
+    <a href="#how-it-works" class="btn btn-secondary">See how it works</a>
+  </div>
+  <div class="install-block">
+    <span class="prompt">$</span> npx modspec ./spec/
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="section-label">Features</div>
+  <h2>Everything you need</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <span class="icon">&#9671;</span>
+      <h3>Interactive graph</h3>
+      <p>D3-powered force-directed visualization with zoom, pan, and drag. Click any node to explore its details.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#9783;</span>
+      <h3>Multiple layouts</h3>
+      <p>Switch between Force, Tree (top-down hierarchy), and Manual (free positioning) modes with one click.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#9998;</span>
+      <h3>Inline editing</h3>
+      <p>Edit spec bodies and feature files directly in the browser. Changes save back to disk instantly.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#8635;</span>
+      <h3>Live reload</h3>
+      <p>Dev server watches your files and pushes changes via SSE. Edit in your editor, see it update in real time.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#9745;</span>
+      <h3>Gherkin integration</h3>
+      <p>Feature files are parsed and displayed with full scenario steps &mdash; Given, When, Then &mdash; right in the side panel.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128196;</span>
+      <h3>Static export</h3>
+      <p>Generate a self-contained HTML file you can share, commit, or host anywhere. No server needed.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how-it-works">
+  <div class="section-label">How it works</div>
+  <h2>Three steps to a living spec graph</h2>
+  <div class="steps">
+    <div class="step">
+      <h3>Write specs</h3>
+      <p>Create <code>.md</code> files with YAML frontmatter declaring <code>name</code>, <code>depends_on</code>, and optionally a <code>features</code> path.</p>
+    </div>
+    <div class="step">
+      <h3>Add features</h3>
+      <p>Write standard Gherkin <code>.feature</code> files with Scenarios and Given/When/Then steps. Link them from your spec.</p>
+    </div>
+    <div class="step">
+      <h3>Visualize</h3>
+      <p>Run <code>modspec ./spec/</code> and open the browser. Explore your dependency graph, click nodes, switch layouts.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 56px;">
+    <div class="section-label">Example spec file</div>
+    <div class="example-block">
+      <div class="fm">---</div>
+      <div><span class="key">name:</span> <span class="val">Persistence</span></div>
+      <div><span class="key">description:</span> <span class="val">SQLite database layer</span></div>
+      <div><span class="key">depends_on:</span></div>
+      <div>&nbsp;&nbsp;<span class="val">- bootstrap</span></div>
+      <div><span class="key">features:</span> <span class="val">features/persistence/</span></div>
+      <div class="fm">---</div>
+      <br>
+      <div class="body"># Persistence</div>
+      <br>
+      <div class="body">Handles the database abstraction layer.</div>
+      <div class="body">Uses SQLite for local-first storage.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>modspec &mdash; built for spec-driven development &middot; <a href="https://github.com/moe-the-techie/modspec">GitHub</a></p>
+</footer>
+
+</body>
+</html>

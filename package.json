@@ -1,0 +1,21 @@
+{
+  "name": "modspec",
+  "version": "1.0.0",
+  "description": "Parse spec files with YAML frontmatter and visualize as an interactive dependency graph",
+  "type": "module",
+  "bin": {
+    "modspec": "./bin/modspec.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "gray-matter": "^4.0.3",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.1"
+  }
+}

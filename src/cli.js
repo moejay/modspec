@@ -1,0 +1,41 @@
+/**
+ * Parse CLI arguments for modspec.
+ *
+ * @param {string[]} args - process.argv.slice(2)
+ * @returns {Object} parsed options
+ */
+export function parseCliArgs(args) {
+  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+    return { help: true };
+  }
+
+  const specDir = args[0];
+
+  // Parse --output flag
+  let outputPath = null;
+  let mode = "serve";
+  const outputIdx = args.indexOf("--output");
+  const outputShortIdx = args.indexOf("-o");
+  const outputFlagIdx = outputIdx !== -1 ? outputIdx : outputShortIdx;
+
+  if (outputFlagIdx !== -1) {
+    outputPath = args[outputFlagIdx + 1];
+    if (!outputPath || outputPath.startsWith("-")) {
+      return { error: "--output requires a file path" };
+    }
+    mode = "static";
+  }
+
+  // Parse --port flag
+  let port = 3333;
+  const portIdx = args.indexOf("--port");
+  if (portIdx !== -1) {
+    const portStr = args[portIdx + 1];
+    if (!portStr || isNaN(Number(portStr))) {
+      return { error: "--port requires a number" };
+    }
+    port = Number(portStr);
+  }
+
+  return { specDir, mode, outputPath, port, help: false };
+}
