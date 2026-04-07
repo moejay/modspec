@@ -758,6 +758,8 @@ export function generateHTML(specs, options = {}) {
     <button class="layout-btn active" id="layout-force" onclick="setLayout('force')">Force</button>
     <button class="layout-btn" id="layout-tree" onclick="setLayout('tree')">Tree</button>
     <button class="layout-btn" id="layout-manual" onclick="setLayout('manual')">Manual</button>
+    <span style="width:1px;height:20px;background:#0f3460;margin:0 8px;"></span>
+    <button class="layout-btn" id="toggle-edge-labels" onclick="toggleEdgeLabels()">Edge Labels</button>
   </div>
   <svg id="graph"></svg>
   <div id="info-panel">
@@ -1027,12 +1029,20 @@ export function generateHTML(specs, options = {}) {
       .attr("class", "link")
       .attr("marker-end", "url(#arrowhead)");
 
-    // Draw link labels (feature uses)
+    // Draw link labels (feature uses) — hidden by default
+    let showEdgeLabels = false;
     const linkLabel = g.selectAll(".link-label")
       .data(links.filter(l => l.uses && l.uses.length > 0))
       .join("text")
       .attr("class", "link-label")
+      .attr("display", "none")
       .text(d => d.uses.join(', '));
+
+    function toggleEdgeLabels() {
+      showEdgeLabels = !showEdgeLabels;
+      g.selectAll(".link-label").attr("display", showEdgeLabels ? null : "none");
+      document.getElementById("toggle-edge-labels").classList.toggle("active", showEdgeLabels);
+    }
 
     // Draw nodes
     const node = g.selectAll(".node")
