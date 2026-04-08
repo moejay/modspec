@@ -1,6 +1,6 @@
 ---
 name: modspec-init
-description: Generate modspec spec files and Gherkin features from an existing codebase. Use for brownfield adoption — analyze existing code structure and create specs that reflect the project's modules and their dependencies.
+description: Generate modspec spec files and Gherkin features from an existing codebase. Use for brownfield adoption — analyze existing code structure and create specs that reflect the project's modules and their dependencies. Add --interactive to get some verification and chance to chat it out 
 license: MIT
 metadata:
   author: modspec
@@ -23,11 +23,11 @@ Analyze the existing codebase and generate:
 
 Examine the project structure to identify modules. Look for:
 
-- **Package/directory boundaries**: `src/auth/`, `lib/database/`, `packages/api/`
-- **Entry points**: `index.js`, `mod.rs`, `__init__.py`, `main.go`
+- **Package/directory boundaries**: Distinct directories or packages that represent separate concerns
+- **Entry points**: Main files that serve as the module's public surface
 - **Export patterns**: What does each module expose to others?
 - **Import patterns**: What does each module consume from others?
-- **Configuration boundaries**: Separate config, shared state, DI containers
+- **Configuration boundaries**: Separate config, shared state, dependency wiring
 
 ### Step 2: Identify dependencies
 
@@ -39,11 +39,11 @@ For each module, determine:
 ### Step 3: Identify features (public interface)
 
 For each module, identify the features it provides — its public API surface:
-- Exported functions, classes, or types
-- HTTP endpoints it serves
-- Events it emits
-- Commands it handles
-- Data it stores/retrieves
+- Capabilities it exposes to other modules or external consumers
+- Endpoints or interfaces it serves
+- Events or notifications it emits
+- Commands or operations it handles
+- Data it stores or retrieves
 
 Name features in **kebab-case**: `user-login`, `data-storage`, `api-routing`.
 
@@ -84,6 +84,19 @@ Feature: feature-name-in-kebab-case
 
 ## Guidelines
 
+### Technology-agnostic specs or not
+
+**This is critical unless requested explicitly by the user.** Specs must describe modules and features at a high level of abstraction, independent of any specific programming language, framework, or technology. The spec captures **what** a module does and **why**, never **how** it does it.
+
+- **No language-specific terms**: Don't reference classes, functions, decorators, hooks, middleware, or any language construct. Describe capabilities and responsibilities instead.
+- **No framework references**: Don't mention Express, Django, React, Rails, Spring, etc. Describe the architectural role.
+- **No implementation details**: Don't reference file extensions, import paths, specific libraries, ORMs, or drivers. Describe the concern being addressed.
+- **Describe intent, not mechanism**: "Provides persistent data storage and retrieval" not "PostgreSQL connection pool and query interface". "Verifies caller identity" not "JWT token validation middleware".
+
+The spec should remain valid even if the project is rewritten in a completely different language or framework.
+
+If the user explicitly mentions to keep the tech stack as part of the spec, then make sure concepts, and modularity is reflected as part of the specs including the bootstrap 
+
 ### Module granularity
 
 - **Right-sized**: Each spec should represent a meaningful unit that could be developed, tested, and reasoned about independently.
@@ -99,114 +112,115 @@ Feature: feature-name-in-kebab-case
 ### Groups
 
 Assign groups based on architectural layers or domains:
-- `foundation` — bootstrap, config, shared utilities
-- `infrastructure` — database, caching, messaging, storage
+- `foundation` — bootstrap, configuration, shared primitives
+- `infrastructure` — data persistence, caching, messaging, external integrations
 - `domain` — core business logic modules
-- `api` — HTTP endpoints, GraphQL, gRPC
-- `ui` — frontend components, pages, layouts
+- `interface` — APIs, user-facing endpoints, external service contracts
+- `presentation` — UI components, pages, layouts
 - Or use domain-specific groupings that match the project
 
 ### Feature identification heuristics
 
-Look for these patterns to identify features:
+Examine the code to identify capabilities, then **abstract them** into technology-neutral feature names:
 
-| Pattern | Feature name suggestion |
+| What you see in code | Feature name (tech-agnostic) |
 |---------|----------------------|
-| `export function createUser(...)` | `user-creation` |
-| `router.get('/health', ...)` | `health-endpoint` |
-| `class DatabasePool` with `query()`, `transaction()` | `query-execution`, `transaction-management` |
-| `EventEmitter.emit('order.completed')` | `order-completion-events` |
-| `migration files in db/migrations/` | `schema-migrations` |
+| Functions that create user records | `user-creation` |
+| A health-check route/endpoint | `health-reporting` |
+| Code that runs queries against a data store | `data-querying` |
+| Code that wraps multiple operations atomically | `transactional-operations` |
+| Event emission on order completion | `order-lifecycle-events` |
+| Schema migration files | `schema-evolution` |
 
 ### Dependency detection heuristics
 
-| Pattern | Dependency type |
+| What you see in code | Dependency (tech-agnostic) |
 |---------|----------------|
-| `import { db } from '../database'` | Direct: uses database module |
-| `@Inject(AuthService)` | Direct: uses auth module |
-| `fetch('/api/users')` | Indirect: uses API module (may not appear in imports) |
-| Environment variables like `DATABASE_URL` | Infrastructure: depends on config |
-| Shared types/interfaces | Structural: depends on types module |
+| Module imports another module's data layer | Direct: uses data-persistence module |
+| Dependency injection of an auth component | Direct: uses identity module |
+| Network calls to another module's endpoints | Indirect: uses interface module |
+| Reading configuration from environment/files | Infrastructure: depends on configuration module |
+| Shared type definitions or contracts | Structural: depends on contracts module |
 
 ### Example output
 
-For a Node.js project with `src/auth/`, `src/database/`, `src/api/`, `src/config/`:
+For a project with auth, data storage, API, and configuration concerns:
 
-**spec/config.md:**
+**spec/configuration.md:**
 ```markdown
 ---
-name: config
-description: Environment configuration and validation
+name: configuration
+description: Manages application settings and environment-specific values
 group: foundation
-tags: [config, env]
+tags: [config, environment]
 depends_on: []
-features: features/config/
+features: features/configuration/
 ---
 
-# Config
+# Configuration
 
-Loads and validates environment variables. Provides typed config to all modules.
+Loads, validates, and provides application settings to all modules. Ensures required values are present and well-formed before the application starts.
 ```
 
-**spec/database.md:**
+**spec/data-storage.md:**
 ```markdown
 ---
-name: database
-description: PostgreSQL connection pool and query interface
+name: data-storage
+description: Persistent data storage and retrieval
 group: infrastructure
-tags: [database, postgres]
+tags: [data, persistence]
 depends_on:
-  - name: config
-    uses: [env-loading]
-features: features/database/
+  - name: configuration
+    uses: [settings-access]
+features: features/data-storage/
 ---
 
-# Database
+# Data Storage
 
-Manages the PostgreSQL connection pool and provides a query interface.
+Provides a reliable interface for persisting and retrieving application data. Manages connection lifecycle and ensures data integrity.
 ```
 
 **spec/auth.md:**
 ```markdown
 ---
 name: auth
-description: User authentication and session management
+description: Identity verification and session management
 group: domain
-tags: [auth, security]
+tags: [auth, security, identity]
 depends_on:
-  - name: database
-    uses: [query-execution, transaction-management]
-  - name: config
-    uses: [env-loading]
+  - name: data-storage
+    uses: [data-querying, transactional-operations]
+  - name: configuration
+    uses: [settings-access]
 features: features/auth/
 ---
 
 # Auth
 
-Handles user login, registration, and session token management.
+Verifies user identity, manages credentials, and maintains session state. Controls access to protected resources.
 ```
 
-**features/database/query-execution.feature:**
+**features/data-storage/data-querying.feature:**
 ```gherkin
-Feature: query-execution
-  Execute SQL queries against the database.
+Feature: data-querying
+  Retrieve stored data by various criteria.
 
-  Scenario: Execute a SELECT query
-    Given a connected database pool
-    When I execute a SELECT query
-    Then the query results are returned
+  Scenario: Retrieve records matching a filter
+    Given the data store contains records
+    When a query is submitted with filter criteria
+    Then only matching records are returned
 
-  Scenario: Handle query errors gracefully
-    Given a connected database pool
-    When I execute an invalid query
-    Then a descriptive error is returned
+  Scenario: Handle invalid queries gracefully
+    Given a connected data store
+    When a malformed query is submitted
+    Then a descriptive error is returned without exposing internals
 ```
 
-## Interactive workflow
+## Interactive workflow if user specified --interactive
 
-1. Ask the user which directory to analyze (or use the current project root)
-2. Present the identified modules and their dependencies for review
-3. Ask if they want feature files generated too
+1. Ask the user which directory to analyze (or use the current project root) - Default: ./spec and ./features in current root
+2. Present the identified modules and their dependencies for review - Default: Accept
+3. Ask if they want feature files generated too - Default: Yes
 4. Generate the files
 5. Suggest running `modspec ./spec/` to visualize the result
 6. Iterate — the user may want to adjust groupings, split/merge modules, or refine features
