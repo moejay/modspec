@@ -1,6 +1,6 @@
 {
   "name": "@moejay/modspec",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Spec-driven dependency graph visualizer with composable modules and feature tracking",
   "type": "module",
   "bin": {
