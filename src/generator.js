@@ -271,6 +271,369 @@ export function generateHTML(specs, options = {}) {
       if (selectedNode) renderFeatures(selectedNode);
     }
 
+    // AI Panel state
+    let aiSessionId = null;
+    let aiStreaming = false;
+    let aiAbortController = null;
+    let lastExtractedSpec = null;
+
+    const AI_SETTINGS_KEY = 'modspec-ai-settings';
+    const AI_SETTINGS_DEFAULTS = {
+      permissionMode: '',
+      allowedTools: ['Edit', 'Read', 'Write', 'Glob', 'Grep'],
+      customTools: '',
+      customArgs: '',
+      dangerouslySkipPermissions: false,
+    };
+
+    function loadAISettings() {
+      try {
+        const stored = localStorage.getItem(AI_SETTINGS_KEY);
+        if (stored) return { ...AI_SETTINGS_DEFAULTS, ...JSON.parse(stored) };
+      } catch {}
+      return { ...AI_SETTINGS_DEFAULTS };
+    }
+
+    function saveAISettings() {
+      const settings = {
+        permissionMode: document.getElementById('ai-setting-permission-mode').value,
+        allowedTools: Array.from(document.querySelectorAll('.ai-tool-checkbox input:checked')).map(cb => cb.dataset.tool),
+        customTools: document.getElementById('ai-setting-custom-tools').value.trim(),
+        customArgs: document.getElementById('ai-setting-custom-args').value.trim(),
+        dangerouslySkipPermissions: document.getElementById('ai-setting-skip-permissions').checked,
+      };
+      localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
+    }
+
+    function applySettingsToForm(settings) {
+      document.getElementById('ai-setting-permission-mode').value = settings.permissionMode || '';
+      document.querySelectorAll('.ai-tool-checkbox input').forEach(cb => {
+        cb.checked = settings.allowedTools.includes(cb.dataset.tool);
+      });
+      document.getElementById('ai-setting-custom-tools').value = settings.customTools || '';
+      document.getElementById('ai-setting-custom-args').value = settings.customArgs || '';
+      document.getElementById('ai-setting-skip-permissions').checked = settings.dangerouslySkipPermissions || false;
+    }
+
+    function getAISettings() {
+      const s = loadAISettings();
+      // Merge checkbox tools with custom tool patterns
+      const allTools = [...s.allowedTools];
+      if (s.customTools) {
+        s.customTools.split(/[,\\s]+/).filter(Boolean).forEach(t => {
+          if (!allTools.includes(t)) allTools.push(t);
+        });
+      }
+      return {
+        permissionMode: s.permissionMode || undefined,
+        allowedTools: allTools.length > 0 ? allTools : undefined,
+        customArgs: s.customArgs || undefined,
+        dangerouslySkipPermissions: s.dangerouslySkipPermissions || undefined,
+      };
+    }
+
+    function toggleSettingsPanel() {
+      const panel = document.getElementById('ai-settings-panel');
+      const chat = document.getElementById('ai-chat-messages');
+      const preview = document.getElementById('ai-spec-preview');
+      const inputArea = document.querySelector('.ai-input-area');
+      const btn = document.getElementById('ai-gear-btn');
+      const isVisible = panel.classList.contains('visible');
+      if (isVisible) {
+        panel.classList.remove('visible');
+        chat.style.display = '';
+        preview.style.display = '';
+        inputArea.style.display = '';
+        btn.classList.remove('active');
+      } else {
+        applySettingsToForm(loadAISettings());
+        panel.classList.add('visible');
+        chat.style.display = 'none';
+        preview.style.display = 'none';
+        inputArea.style.display = 'none';
+        btn.classList.add('active');
+      }
+    }
+
+    // Initialize settings form on load
+    (function initSettings() {
+      applySettingsToForm(loadAISettings());
+    })();
+
+    function toggleAIPanel() {
+      const panel = document.getElementById('ai-panel');
+      const btn = document.getElementById('new-spec-btn');
+      if (panel.classList.contains('open')) {
+        panel.classList.remove('open');
+        btn.classList.remove('active');
+      } else {
+        panel.classList.add('open');
+        btn.classList.add('active');
+        if (!aiSessionId) newAISession();
+        document.getElementById('ai-input').focus();
+      }
+    }
+
+    function closeAIPanel() {
+      document.getElementById('ai-panel').classList.remove('open');
+      document.getElementById('new-spec-btn').classList.remove('active');
+    }
+
+    function newAISession() {
+      aiSessionId = null;
+      document.getElementById('ai-chat-messages').innerHTML = '';
+      hideSpecPreview();
+      lastExtractedSpec = null;
+    }
+
+    function hideSpecPreview() {
+      document.getElementById('ai-spec-preview').classList.remove('visible');
+    }
+
+    function addChatMessage(role, content) {
+      const container = document.getElementById('ai-chat-messages');
+      const div = document.createElement('div');
+      div.className = 'ai-message ' + (role === 'user' ? 'ai-user-msg' : role === 'error' ? 'ai-error-msg' : 'ai-assistant-msg');
+      if (role === 'assistant') {
+        div.innerHTML = typeof marked !== 'undefined' ? marked.parse(content) : '<pre>' + escapeHtml(content) + '</pre>';
+      } else {
+        div.textContent = content;
+      }
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return div;
+    }
+
+    function handleAIInputKey(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendAIMessage();
+      }
+    }
+
+    async function sendAIMessage() {
+      if (aiStreaming) return;
+      const input = document.getElementById('ai-input');
+      const message = input.value.trim();
+      if (!message) return;
+
+      input.value = '';
+      input.style.height = 'auto';
+      addChatMessage('user', message);
+
+      const sendBtn = document.getElementById('ai-send-btn');
+      sendBtn.textContent = 'Stop';
+      sendBtn.onclick = stopAIStream;
+      aiStreaming = true;
+
+      // Create assistant message bubble for streaming
+      const container = document.getElementById('ai-chat-messages');
+      const assistantDiv = document.createElement('div');
+      assistantDiv.className = 'ai-message ai-assistant-msg ai-streaming-cursor';
+      assistantDiv.textContent = '';
+      container.appendChild(assistantDiv);
+      container.scrollTop = container.scrollHeight;
+
+      let fullText = '';
+
+      try {
+        aiAbortController = new AbortController();
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, sessionId: aiSessionId, settings: getAISettings() }),
+          signal: aiAbortController.signal,
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\\n');
+          sseBuffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const jsonStr = line.slice(6);
+            try {
+              const evt = JSON.parse(jsonStr);
+              if (evt.type === 'assistant' && evt.message && evt.message.content) {
+                // Extract text from content blocks
+                const textContent = evt.message.content
+                  .filter(c => c.type === 'text')
+                  .map(c => c.text)
+                  .join('');
+                if (textContent) {
+                  fullText = textContent;
+                  assistantDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(fullText) : '<pre>' + escapeHtml(fullText) + '</pre>';
+                  container.scrollTop = container.scrollHeight;
+                }
+              } else if (evt.type === 'system' && evt.session_id) {
+                // Capture the actual session ID from Claude for resume
+                aiSessionId = evt.session_id;
+              } else if (evt.type === 'result' && evt.result) {
+                fullText = evt.result;
+              } else if (evt.type === 'error') {
+                addChatMessage('error', evt.message || 'An error occurred');
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          addChatMessage('error', 'Connection error: ' + err.message);
+        }
+      }
+
+      // Finalize the assistant message
+      assistantDiv.classList.remove('ai-streaming-cursor');
+      if (fullText) {
+        assistantDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(fullText) : '<pre>' + escapeHtml(fullText) + '</pre>';
+      }
+
+      // Try to extract a spec from the response
+      extractSpecFromResponse(fullText);
+
+      aiStreaming = false;
+      aiAbortController = null;
+      sendBtn.textContent = 'Send';
+      sendBtn.onclick = sendAIMessage;
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function stopAIStream() {
+      if (aiAbortController) {
+        aiAbortController.abort();
+      }
+      fetch('/api/ai/stop', { method: 'POST' }).catch(() => {});
+    }
+
+    function extractSpecFromResponse(text) {
+      if (!text) return;
+      // Match markdown code fence containing YAML frontmatter
+      const fenceRegex = /\`\`\`(?:markdown|md|yaml)?\\n(---\\n[\\s\\S]*?\\n---\\n[\\s\\S]*?)\`\`\`/;
+      const match = text.match(fenceRegex);
+      if (!match) return;
+
+      const specContent = match[1];
+
+      // Parse the frontmatter to validate
+      const fmMatch = specContent.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);
+      if (!fmMatch) return;
+
+      try {
+        // Simple YAML name extraction for validation
+        const yamlStr = fmMatch[1];
+        const nameMatch = yamlStr.match(/^name:\\s*(.+)$/m);
+        if (!nameMatch) return;
+
+        lastExtractedSpec = specContent;
+        const preview = document.getElementById('ai-preview-content');
+        preview.textContent = specContent;
+        document.getElementById('ai-spec-preview').classList.add('visible');
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    async function saveExtractedSpec() {
+      if (!lastExtractedSpec) return;
+
+      // Parse frontmatter from the extracted spec
+      const fmMatch = lastExtractedSpec.match(/^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/);
+      if (!fmMatch) {
+        addChatMessage('error', 'Could not parse spec content');
+        return;
+      }
+
+      const yamlStr = fmMatch[1];
+      const body = fmMatch[2].trim();
+
+      // Extract fields from YAML (simple line-by-line parsing)
+      const fields = {};
+      let currentKey = null;
+      let arrayValues = [];
+      let inArray = false;
+
+      for (const line of yamlStr.split('\\n')) {
+        const keyMatch = line.match(/^(\\w[\\w_]*):\\s*(.*)$/);
+        if (keyMatch) {
+          if (inArray && currentKey) {
+            fields[currentKey] = arrayValues;
+            arrayValues = [];
+            inArray = false;
+          }
+          currentKey = keyMatch[1];
+          const val = keyMatch[2].trim();
+          if (val === '' || val === '[]') {
+            // Could be start of array
+          } else if (val.startsWith('[') && val.endsWith(']')) {
+            fields[currentKey] = val.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+          } else {
+            fields[currentKey] = val.replace(/^["']|["']$/g, '');
+          }
+        } else if (line.match(/^\\s+-\\s+/)) {
+          inArray = true;
+          const item = line.replace(/^\\s+-\\s+/, '').trim();
+          // Could be a simple string or a name: value
+          const nameVal = item.match(/^name:\\s*(.+)$/);
+          if (nameVal) {
+            arrayValues.push({ name: nameVal[1].trim().replace(/^["']|["']$/g, ''), uses: [] });
+          } else {
+            arrayValues.push(item.replace(/^["']|["']$/g, ''));
+          }
+        } else if (line.match(/^\\s+uses:/) && arrayValues.length > 0) {
+          // uses field for depends_on object
+          const usesMatch = line.match(/uses:\\s*\\[(.*)\\]/);
+          if (usesMatch && typeof arrayValues[arrayValues.length - 1] === 'object') {
+            arrayValues[arrayValues.length - 1].uses = usesMatch[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+          }
+        }
+      }
+      if (inArray && currentKey) {
+        fields[currentKey] = arrayValues;
+      }
+
+      if (!fields.name) {
+        addChatMessage('error', 'Spec must have a name field in frontmatter');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/specs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: fields.name,
+            description: fields.description || '',
+            group: fields.group || '',
+            tags: Array.isArray(fields.tags) ? fields.tags : [],
+            depends_on: Array.isArray(fields.depends_on) ? fields.depends_on : [],
+            body: body,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          addChatMessage('error', 'Failed to save: ' + (data.error || 'Unknown error'));
+          return;
+        }
+
+        addChatMessage('assistant', '**Spec "' + escapeHtml(fields.name) + '" created successfully!** It should appear in the graph shortly.');
+        hideSpecPreview();
+        lastExtractedSpec = null;
+      } catch (err) {
+        addChatMessage('error', 'Error saving spec: ' + err.message);
+      }
+    }
+
     connectSSE();
     `
     : "";
@@ -750,6 +1113,330 @@ export function generateHTML(specs, options = {}) {
       stroke: #e94560;
       stroke-width: 3px;
     }
+
+    #ai-panel {
+      position: fixed;
+      top: 0;
+      left: -45vw;
+      width: 40vw;
+      min-width: 380px;
+      height: 100vh;
+      background: #16213e;
+      border-right: 1px solid #0f3460;
+      transition: left 0.3s ease;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #ai-panel.open {
+      left: 0;
+    }
+
+    .ai-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+
+    .ai-panel-header h2 {
+      color: #e94560;
+      font-size: 16px;
+      margin: 0;
+    }
+
+    .ai-panel-header .ai-header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .ai-header-btn {
+      background: #0d0d1a;
+      border: 1px solid #0f3460;
+      color: #888;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+
+    .ai-header-btn:hover {
+      color: #ccc;
+      border-color: #555;
+    }
+
+    #ai-chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .ai-message {
+      max-width: 90%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-wrap: break-word;
+    }
+
+    .ai-message pre {
+      background: #0d0d1a;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+      margin: 8px 0;
+    }
+
+    .ai-message code {
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .ai-message p { margin: 0 0 8px 0; }
+    .ai-message p:last-child { margin-bottom: 0; }
+
+    .ai-user-msg {
+      align-self: flex-end;
+      background: #0f3460;
+      color: #e0e0e0;
+    }
+
+    .ai-assistant-msg {
+      align-self: flex-start;
+      background: #0d0d1a;
+      color: #ccc;
+      border: 1px solid #1a1a3e;
+    }
+
+    .ai-error-msg {
+      align-self: flex-start;
+      background: #3a1020;
+      color: #e94560;
+      border: 1px solid #5a1030;
+    }
+
+    .ai-streaming-cursor::after {
+      content: '\\25AE';
+      animation: blink 0.8s step-end infinite;
+      color: #e94560;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .ai-input-area {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+
+    #ai-input {
+      flex: 1;
+      background: #0d0d1a;
+      color: #e0e0e0;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      padding: 8px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: none;
+      min-height: 20px;
+      max-height: 120px;
+    }
+
+    #ai-input:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+
+    .ai-send-btn {
+      background: #e94560;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .ai-send-btn:hover {
+      background: #d63a55;
+    }
+
+    .ai-send-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+
+    .ai-spec-preview {
+      border-top: 1px solid #0f3460;
+      padding: 12px 20px;
+      flex-shrink: 0;
+      max-height: 30vh;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .ai-spec-preview.visible {
+      display: block;
+    }
+
+    .ai-spec-preview h3 {
+      color: #e94560;
+      font-size: 13px;
+      margin: 0 0 8px 0;
+    }
+
+    .ai-spec-preview pre {
+      background: #0d0d1a;
+      color: #ccc;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin: 0 0 8px 0;
+      max-height: 15vh;
+      overflow-y: auto;
+    }
+
+    .ai-spec-preview .ai-preview-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    #ai-settings-panel {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    #ai-settings-panel.visible {
+      display: block;
+    }
+
+    .ai-settings-group {
+      margin-bottom: 20px;
+    }
+
+    .ai-settings-group label {
+      display: block;
+      color: #888;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .ai-settings-group select,
+    .ai-settings-group input[type="text"] {
+      width: 100%;
+      background: #0d0d1a;
+      color: #e0e0e0;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 13px;
+    }
+
+    .ai-settings-group select:focus,
+    .ai-settings-group input[type="text"]:focus {
+      outline: none;
+      border-color: #e94560;
+    }
+
+    .ai-tool-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      margin-bottom: 8px;
+    }
+
+    .ai-tool-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #ccc;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .ai-tool-checkbox input[type="checkbox"] {
+      accent-color: #e94560;
+      cursor: pointer;
+    }
+
+    .ai-danger-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      background: #2a0a15;
+      border: 1px solid #5a1030;
+      border-radius: 4px;
+    }
+
+    .ai-danger-toggle label {
+      color: #e94560 !important;
+      text-transform: none !important;
+      letter-spacing: 0 !important;
+      font-size: 13px !important;
+      margin-bottom: 0 !important;
+      cursor: pointer;
+    }
+
+    .ai-danger-toggle input[type="checkbox"] {
+      accent-color: #e94560;
+      cursor: pointer;
+    }
+
+    .ai-danger-warning {
+      color: #888;
+      font-size: 11px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .ai-settings-footer {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+
+    .ai-gear-btn {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .ai-gear-btn:hover {
+      color: #e94560;
+    }
+
+    .ai-gear-btn.active {
+      color: #e94560;
+    }
   </style>
 </head>
 <body>
@@ -760,8 +1447,69 @@ export function generateHTML(specs, options = {}) {
     <button class="layout-btn" id="layout-manual" onclick="setLayout('manual')">Manual</button>
     <span style="width:1px;height:20px;background:#0f3460;margin:0 8px;"></span>
     <button class="layout-btn" id="toggle-edge-labels" onclick="toggleEdgeLabels()">Edge Labels</button>
+${liveReload ? `    <span style="width:1px;height:20px;background:#0f3460;margin:0 8px;"></span>
+    <button class="layout-btn" id="new-spec-btn" onclick="toggleAIPanel()">+ New Spec</button>` : ""}
   </div>
   <svg id="graph"></svg>
+${liveReload ? `  <div id="ai-panel">
+    <div class="ai-panel-header">
+      <h2>AI Spec Assistant</h2>
+      <div class="ai-header-actions">
+        <button class="ai-header-btn" onclick="newAISession()">New Session</button>
+        <button class="ai-gear-btn" id="ai-gear-btn" onclick="toggleSettingsPanel()" title="Settings">&#9881;</button>
+        <button class="close-btn" onclick="closeAIPanel()">&times;</button>
+      </div>
+    </div>
+    <div id="ai-settings-panel">
+      <div class="ai-settings-group">
+        <label>Permission Mode</label>
+        <select id="ai-setting-permission-mode" onchange="saveAISettings()">
+          <option value="">Default (prompt for each tool)</option>
+          <option value="acceptEdits">Accept Edits (auto-approve file changes)</option>
+          <option value="plan">Plan (confirm before execution)</option>
+          <option value="bypassPermissions">Bypass Permissions</option>
+        </select>
+      </div>
+      <div class="ai-settings-group">
+        <label>Allowed Tools (auto-approved without prompting)</label>
+        <div class="ai-tool-checkboxes">
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Edit" onchange="saveAISettings()" checked> Edit</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Read" onchange="saveAISettings()" checked> Read</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Write" onchange="saveAISettings()" checked> Write</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Glob" onchange="saveAISettings()" checked> Glob</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Grep" onchange="saveAISettings()" checked> Grep</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="Bash" onchange="saveAISettings()"> Bash</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="WebFetch" onchange="saveAISettings()"> WebFetch</label>
+          <label class="ai-tool-checkbox"><input type="checkbox" data-tool="WebSearch" onchange="saveAISettings()"> WebSearch</label>
+        </div>
+        <input type="text" id="ai-setting-custom-tools" placeholder="Additional tool patterns, e.g. Bash(git:*)" onchange="saveAISettings()">
+      </div>
+      <div class="ai-settings-group">
+        <label>Custom CLI Arguments</label>
+        <input type="text" id="ai-setting-custom-args" placeholder="e.g. --model sonnet --max-turns 5" onchange="saveAISettings()">
+      </div>
+      <div class="ai-settings-group">
+        <div class="ai-danger-toggle">
+          <input type="checkbox" id="ai-setting-skip-permissions" onchange="saveAISettings()">
+          <label for="ai-setting-skip-permissions">Dangerously Skip All Permissions</label>
+        </div>
+        <div class="ai-danger-warning">Bypasses all permission checks. Only use in trusted/sandboxed environments. Overrides allowed tools and permission mode.</div>
+      </div>
+    </div>
+    <div id="ai-chat-messages"></div>
+    <div id="ai-spec-preview" class="ai-spec-preview">
+      <h3>Spec Preview</h3>
+      <pre id="ai-preview-content"></pre>
+      <div class="ai-preview-actions">
+        <button class="ai-send-btn" onclick="saveExtractedSpec()">Save Spec</button>
+        <button class="ai-header-btn" onclick="hideSpecPreview()">Dismiss</button>
+      </div>
+    </div>
+    <div class="ai-input-area">
+      <textarea id="ai-input" rows="1" placeholder="Describe the spec you want to create..." onkeydown="handleAIInputKey(event)"></textarea>
+      <button class="ai-send-btn" id="ai-send-btn" onclick="sendAIMessage()">Send</button>
+    </div>
+  </div>` : ""}
   <div id="info-panel">
     <button class="close-btn" onclick="closePanel()">&times;</button>
     <div id="panel-meta">

@@ -1,10 +1,44 @@
 import http from "http";
+import { spawn, execSync } from "child_process";
+import { randomUUID } from "crypto";
 import chokidar from "chokidar";
 import { readFile, writeFile } from "fs/promises";
+import { existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import matter from "gray-matter";
 import { parseSpecDirectory } from "./parser.js";
 import { generateHTML } from "./generator.js";
+
+let claudeAvailable = null;
+function isClaudeAvailable() {
+  if (claudeAvailable !== null) return claudeAvailable;
+  try {
+    execSync("which claude", { stdio: "ignore" });
+    claudeAvailable = true;
+  } catch {
+    claudeAvailable = false;
+  }
+  return claudeAvailable;
+}
+
+function buildSpecContext(specs) {
+  const lines = [
+    "You are helping create modspec specification files. Here are the existing specs in this project:\n",
+  ];
+  for (const s of specs) {
+    const deps = (s.depends_on || []).map((d) => d.name).join(", ");
+    lines.push(
+      `- ${s.name}${s.group ? ` (group: ${s.group})` : ""}${deps ? ` [depends on: ${deps}]` : ""}`,
+    );
+  }
+  lines.push(
+    "\nSpec file format uses YAML frontmatter with fields: name (required), description, group, tags, depends_on (array of {name, uses} or plain strings), features.",
+  );
+  lines.push(
+    "When the user is ready to create a spec, output the COMPLETE spec file content (frontmatter + markdown body) inside a single markdown code fence (```markdown).",
+  );
+  return lines.join("\n");
+}
 
 /**
  * Create a modspec dev server with file watching and SSE.
@@ -24,6 +58,7 @@ export async function createModspecServer({ specDir, port = 3333, projectRoot: e
   const specFilePaths = await buildSpecFileMap(specDir);
 
   const sseClients = new Set();
+  let activeClaudeProcess = null;
 
   let debounceTimer = null;
 
@@ -198,6 +233,217 @@ export async function createModspecServer({ specDir, port = 3333, projectRoot: e
       return;
     }
 
+    // POST /api/specs - create a new spec file
+    if (url.pathname === "/api/specs" && req.method === "POST") {
+      try {
+        const rawBody = await readBody(req);
+        const { name, description, group, tags, depends_on, body } =
+          JSON.parse(rawBody);
+
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Spec must have a name field" }));
+          return;
+        }
+
+        if (specFilePaths[name]) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "A spec with this name already exists" }),
+          );
+          return;
+        }
+
+        const frontmatterData = { name };
+        if (description) frontmatterData.description = description;
+        if (group) frontmatterData.group = group;
+        if (tags && tags.length > 0) frontmatterData.tags = tags;
+        if (depends_on && depends_on.length > 0)
+          frontmatterData.depends_on = depends_on;
+
+        const fileContent = matter.stringify(body || "", frontmatterData);
+        const filePath = join(specDir, `${name}.md`);
+        await writeFile(filePath, fileContent, "utf-8");
+
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, name }));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/ai/chat - streaming Claude CLI proxy
+    if (url.pathname === "/api/ai/chat" && req.method === "POST") {
+      if (!isClaudeAvailable()) {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write(
+          `data: ${JSON.stringify({ type: "error", message: "Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code" })}\n\n`,
+        );
+        res.end();
+        return;
+      }
+
+      try {
+        const rawBody = await readBody(req);
+        const { message, sessionId, settings } = JSON.parse(rawBody);
+
+        if (!message) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Message is required" }));
+          return;
+        }
+
+        // Kill any active Claude process
+        if (activeClaudeProcess) {
+          try {
+            activeClaudeProcess.kill();
+          } catch {
+            // already dead
+          }
+          activeClaudeProcess = null;
+        }
+
+        // Build the prompt - prepend context for first message (no sessionId yet)
+        let prompt = message;
+        if (!sessionId) {
+          prompt = buildSpecContext(specs) + "\n\n" + message;
+        }
+
+        // Build claude args
+        const args = [
+          "-p",
+          prompt,
+          "--output-format",
+          "stream-json",
+          "--verbose",
+        ];
+        if (sessionId) {
+          args.push("--resume", sessionId);
+        }
+
+        // Apply settings (permissions, tools, etc.)
+        const s = settings || {};
+        if (s.dangerouslySkipPermissions) {
+          args.push("--dangerously-skip-permissions");
+        } else {
+          if (s.permissionMode) {
+            args.push("--permission-mode", s.permissionMode);
+          }
+          // Default allowed tools for spec editing if none specified
+          const tools =
+            s.allowedTools && s.allowedTools.length > 0
+              ? s.allowedTools
+              : ["Edit", "Read", "Write", "Glob", "Grep"];
+          args.push("--allowedTools", ...tools);
+        }
+        if (s.customArgs) {
+          const extra = s.customArgs
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+          args.push(...extra);
+        }
+
+        const claude = spawn("claude", args, {
+          cwd: projectRoot,
+          env: { ...process.env },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+        activeClaudeProcess = claude;
+
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+        });
+
+        let buffer = "";
+        claude.stdout.on("data", (chunk) => {
+          buffer += chunk.toString();
+          const lines = buffer.split("\n");
+          buffer = lines.pop(); // keep incomplete line in buffer
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const parsed = JSON.parse(line);
+              res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+            } catch {
+              // not valid JSON, skip
+            }
+          }
+        });
+
+        claude.stderr.on("data", (chunk) => {
+          // Log stderr but don't send to client (may contain debug info)
+          console.error("[claude stderr]", chunk.toString());
+        });
+
+        claude.on("close", (code) => {
+          if (activeClaudeProcess === claude) activeClaudeProcess = null;
+          // Flush remaining buffer
+          if (buffer.trim()) {
+            try {
+              const parsed = JSON.parse(buffer);
+              res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+            } catch {
+              // ignore
+            }
+          }
+          res.write(
+            `data: ${JSON.stringify({ type: "done", exitCode: code })}\n\n`,
+          );
+          res.end();
+        });
+
+        claude.on("error", (err) => {
+          if (activeClaudeProcess === claude) activeClaudeProcess = null;
+          res.write(
+            `data: ${JSON.stringify({ type: "error", message: err.message })}\n\n`,
+          );
+          res.end();
+        });
+
+        req.on("close", () => {
+          // Client disconnected, kill the process
+          if (activeClaudeProcess === claude) {
+            try {
+              claude.kill();
+            } catch {
+              // already dead
+            }
+            activeClaudeProcess = null;
+          }
+        });
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/ai/stop - kill active Claude process
+    if (url.pathname === "/api/ai/stop" && req.method === "POST") {
+      if (activeClaudeProcess) {
+        try {
+          activeClaudeProcess.kill();
+        } catch {
+          // already dead
+        }
+        activeClaudeProcess = null;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
   });
@@ -212,6 +458,14 @@ export async function createModspecServer({ specDir, port = 3333, projectRoot: e
         address: `http://localhost:${addr.port}`,
         close: async () => {
           if (debounceTimer) clearTimeout(debounceTimer);
+          if (activeClaudeProcess) {
+            try {
+              activeClaudeProcess.kill();
+            } catch {
+              // already dead
+            }
+            activeClaudeProcess = null;
+          }
           await watcher.close();
 
           // Close all SSE connections

@@ -168,6 +168,8 @@ npx @moejay/modspec ./spec/ --output graph.html
 - **Composable specs** — Specs are modules with clear interfaces defined by their features
 - **Live reload** — Dev server watches your spec and feature files, pushes changes via SSE instantly
 - **Inline editing** — Edit spec bodies and feature files directly in the browser (dev server mode)
+- **AI spec assistant** — Create new specs from the UI with an AI chat panel powered by Claude Code CLI. Describe what you need in natural language, review the generated spec, and save it with one click
+- **Configurable AI settings** — Fine-tune allowed tools, permission modes, and custom CLI args for the AI assistant. Settings persist in localStorage across sessions
 - **Static export** — Generate a self-contained HTML file with `--output`
 - **Version check** — Notifies you when a new version is available
 
