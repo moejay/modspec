@@ -5,6 +5,7 @@ import { generateHTML } from "../src/generator.js";
 import { createModspecServer } from "../src/server.js";
 import { parseCliArgs } from "../src/cli.js";
 import { checkForUpdate } from "../src/version.js";
+import { analyzeGraph, formatCycle } from "../src/cycles.js";
 import { writeFile, mkdtemp, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, dirname } from "path";
@@ -31,6 +32,51 @@ Examples:
   modspec ./spec/ --output graph.html
   modspec ./spec/ -y
 `;
+
+function printSpecSummary(specs, dirPath) {
+  const { cycles, adj } = analyzeGraph(specs);
+
+  const featureCounts = specs.map((s) => (s.featureFiles || []).length);
+  const totalFeatures = featureCounts.reduce((a, b) => a + b, 0);
+
+  const nameWidth = Math.max(
+    4,
+    ...specs.map((s) => (s.name || "").length),
+  );
+  const groupWidth = Math.max(
+    5,
+    ...specs.map((s) => (s.group || "").length),
+  );
+
+  console.log(
+    `Found ${specs.length} spec${specs.length === 1 ? "" : "s"} in ${dirPath} ` +
+      `(${totalFeatures} feature${totalFeatures === 1 ? "" : "s"} total)`,
+  );
+
+  // Sort for stable, readable output: by group, then name
+  const sorted = [...specs].sort((a, b) => {
+    const g = (a.group || "").localeCompare(b.group || "");
+    return g !== 0 ? g : a.name.localeCompare(b.name);
+  });
+
+  sorted.forEach((s, i) => {
+    const count = (s.featureFiles || []).length;
+    const name = (s.name || "").padEnd(nameWidth);
+    const group = (s.group || "-").padEnd(groupWidth);
+    const feat = `${count} feature${count === 1 ? "" : "s"}`;
+    console.log(`  ${i + 1}. ${name}  ${group}  ${feat}`);
+  });
+
+  if (cycles.length > 0) {
+    console.log("");
+    console.log(
+      `Cyclic dependencies detected (${cycles.length} cycle${cycles.length === 1 ? "" : "s"}):`,
+    );
+    cycles.forEach((scc, i) => {
+      console.log(`  ${i + 1}. ${formatCycle(scc, adj)}`);
+    });
+  }
+}
 
 async function promptUser(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -87,7 +133,7 @@ async function main() {
     process.exit(0);
   }
 
-  console.log(`Found ${specs.length} spec(s): ${specs.map(s => s.name).join(", ")}`);
+  printSpecSummary(specs, dirPath);
 
   if (opts.mode === "static") {
     // Static export mode

@@ -39,11 +39,11 @@ export function generateHTML(specs, options = {}) {
         });
       }
 
-      // Rebuild data
-      const nameSet = new Set(newSpecs.map(s => s.name.toLowerCase()));
+      // Rebuild data via cycle-aware analyzer
+      const analysis = analyzeGraphData(newSpecs);
       const newNodes = newSpecs.map(s => {
         const pos = posMap[s.name];
-        const node = { id: s.name, ...s };
+        const node = { id: s.name, ...s, inCycle: !!analysis.inCycle[s.name] };
         if (pos) {
           node.x = pos.x;
           node.y = pos.y;
@@ -53,46 +53,16 @@ export function generateHTML(specs, options = {}) {
         return node;
       });
 
-      const newLinks = [];
-      newSpecs.forEach(spec => {
-        (spec.depends_on || []).forEach(dep => {
-          const depName = typeof dep === 'string' ? dep : dep.name;
-          const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
-          const target = newSpecs.find(s => s.name.toLowerCase() === depName.toLowerCase());
-          if (target) {
-            newLinks.push({ source: spec.name, target: target.name, uses });
-          }
-        });
-      });
-
-      // Recalculate dependents
-      const newDependentsCount = {};
-      newNodes.forEach(n => newDependentsCount[n.id] = 0);
-      newLinks.forEach(l => {
-        const targetId = typeof l.target === 'string' ? l.target : l.target.id;
-        newDependentsCount[targetId] = (newDependentsCount[targetId] || 0) + 1;
-      });
-
-      // Recalculate depth
-      const newDepthMemo = {};
-      function newCalcDepth(name) {
-        if (newDepthMemo[name] !== undefined) return newDepthMemo[name];
-        const spec = newSpecs.find(s => s.name === name);
-        if (!spec || !spec.depends_on || spec.depends_on.length === 0) {
-          newDepthMemo[name] = 0;
-          return 0;
-        }
-        const maxParent = Math.max(...spec.depends_on.map(d => {
-          const depName = typeof d === 'string' ? d : d.name;
-          const target = newSpecs.find(s => s.name.toLowerCase() === depName.toLowerCase());
-          return target ? newCalcDepth(target.name) : 0;
-        }));
-        newDepthMemo[name] = maxParent + 1;
-        return newDepthMemo[name];
-      }
-      newNodes.forEach(n => newCalcDepth(n.id));
+      const newLinks = analysis.links;
+      const newDependentsCount = analysis.dependentsCount;
+      const newDepthMemo = analysis.depth;
       const newMaxDepth = Math.max(0, ...Object.values(newDepthMemo));
       colorScale.domain([0, Math.max(newMaxDepth, 1)]);
+
+      // Update cycle state
+      graphInCycle = { ...analysis.inCycle };
+      graphCycles = analysis.cycles.slice();
+      updateCycleBadge();
 
       // Update global refs
       nodes.length = 0;
@@ -122,8 +92,9 @@ export function generateHTML(specs, options = {}) {
       const linkSel = g.selectAll(".link").data(links, d => (d.source.id || d.source) + '-' + (d.target.id || d.target));
       linkSel.exit().remove();
       linkSel.enter().append("line")
-        .attr("class", "link")
-        .attr("marker-end", "url(#arrowhead)");
+        .merge(linkSel)
+        .attr("class", d => "link" + (d.cycle ? " cycle" : ""))
+        .attr("marker-end", d => d.cycle ? "url(#arrowhead-cycle)" : "url(#arrowhead)");
 
       // Rebind link labels
       const linkLabelSel = g.selectAll(".link-label").data(
@@ -154,6 +125,7 @@ export function generateHTML(specs, options = {}) {
 
       // Update all circles and text
       const allNodes = g.selectAll(".node");
+      allNodes.classed("cycle", d => !!d.inCycle);
       allNodes.select("circle")
         .attr("r", d => 14 + (dependentsCount[d.id] || 0) * 4)
         .attr("fill", d => colorScale(depthMemo[d.id] || 0))
@@ -194,6 +166,9 @@ export function generateHTML(specs, options = {}) {
       // Re-apply current layout
       if (currentLayout === 'tree') {
         computeTreePositions();
+        simulation.alpha(0.3).restart();
+      } else if (currentLayout === 'groups') {
+        computeGroupsPositions();
         simulation.alpha(0.3).restart();
       } else if (currentLayout === 'manual') {
         nodes.forEach(n => { n.fx = n.x; n.fy = n.y; });
@@ -688,9 +663,44 @@ export function generateHTML(specs, options = {}) {
       stroke-opacity: 0.6;
     }
 
+    .link.cycle {
+      stroke: #e94560;
+      stroke-width: 2px;
+      stroke-opacity: 0.85;
+      stroke-dasharray: 5 3;
+    }
+
     .link-arrow {
       fill: #555;
       fill-opacity: 0.6;
+    }
+
+    .link-arrow.cycle {
+      fill: #e94560;
+      fill-opacity: 0.9;
+    }
+
+    .node.cycle circle {
+      stroke: #e94560;
+      stroke-width: 3px;
+      stroke-dasharray: 3 2;
+    }
+
+    .cycle-badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 8px;
+      background: rgba(233, 69, 96, 0.15);
+      color: #e94560;
+      border: 1px solid rgba(233, 69, 96, 0.4);
+      border-radius: 10px;
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+
+    .dep-tag.cycle {
+      background: rgba(233, 69, 96, 0.2);
+      color: #e94560;
     }
 
     .link-label {
@@ -1440,10 +1450,11 @@ export function generateHTML(specs, options = {}) {
   </style>
 </head>
 <body>
-  <div class="title-bar"><span>modspec</span> dependency graph</div>
+  <div class="title-bar"><span>modspec</span> dependency graph <span id="cycle-badge" class="cycle-badge" style="display:none;"></span></div>
   <div class="layout-toolbar">
     <button class="layout-btn active" id="layout-force" onclick="setLayout('force')">Force</button>
     <button class="layout-btn" id="layout-tree" onclick="setLayout('tree')">Tree</button>
+    <button class="layout-btn" id="layout-groups" onclick="setLayout('groups')">Groups</button>
     <button class="layout-btn" id="layout-manual" onclick="setLayout('manual')">Manual</button>
     <span style="width:1px;height:20px;background:#0f3460;margin:0 8px;"></span>
     <button class="layout-btn" id="toggle-edge-labels" onclick="toggleEdgeLabels()">Edge Labels</button>
@@ -1556,6 +1567,132 @@ ${liveReload ? `  <div id="ai-panel">
     const specs = ${specsJSON};
     let selectedNode = null;
 
+    // Analyze graph: detects cycles via Tarjan's SCC and computes cycle-safe
+    // depth so A<->B cycles don't infinite-loop. Edges within a cycle SCC are
+    // marked with { cycle: true } so they can be rendered distinctly.
+    function analyzeGraphData(specsArr) {
+      const nameMap = {};
+      specsArr.forEach(s => { nameMap[s.name.toLowerCase()] = s; });
+
+      const adj = {};
+      specsArr.forEach(s => {
+        const targets = [];
+        (s.depends_on || []).forEach(dep => {
+          const depName = typeof dep === 'string' ? dep : (dep && dep.name);
+          if (!depName) return;
+          const t = nameMap[depName.toLowerCase()];
+          if (t) targets.push(t.name);
+        });
+        adj[s.name] = targets;
+      });
+
+      // Tarjan's SCC
+      let idx = 0;
+      const stack = [];
+      const onStack = {};
+      const indices = {};
+      const low = {};
+      const sccs = [];
+      const nodeScc = {};
+
+      function strongconnect(v) {
+        indices[v] = idx;
+        low[v] = idx;
+        idx++;
+        stack.push(v);
+        onStack[v] = true;
+        (adj[v] || []).forEach(w => {
+          if (indices[w] === undefined) {
+            strongconnect(w);
+            if (low[w] < low[v]) low[v] = low[w];
+          } else if (onStack[w]) {
+            if (indices[w] < low[v]) low[v] = indices[w];
+          }
+        });
+        if (low[v] === indices[v]) {
+          const scc = [];
+          let w;
+          do {
+            w = stack.pop();
+            delete onStack[w];
+            nodeScc[w] = sccs.length;
+            scc.push(w);
+          } while (w !== v);
+          sccs.push(scc);
+        }
+      }
+      specsArr.forEach(s => {
+        if (indices[s.name] === undefined) strongconnect(s.name);
+      });
+
+      const inCycle = {};
+      const cycles = [];
+      sccs.forEach(scc => {
+        const isCycle = scc.length > 1 ||
+          (scc.length === 1 && (adj[scc[0]] || []).includes(scc[0]));
+        if (isCycle) {
+          cycles.push(scc);
+          scc.forEach(n => { inCycle[n] = true; });
+        }
+      });
+
+      function isCycleEdge(a, b) {
+        return !!(inCycle[a] && inCycle[b] && nodeScc[a] === nodeScc[b]);
+      }
+
+      // Cycle-safe depth (operate on condensed DAG)
+      const depth = {};
+      function calcD(name, visiting) {
+        if (depth[name] !== undefined) return depth[name];
+        if (visiting[name]) return 0;
+        visiting[name] = true;
+        const effective = (adj[name] || []).filter(t => !isCycleEdge(name, t));
+        let d = 0;
+        if (effective.length > 0) {
+          let maxParent = 0;
+          effective.forEach(t => {
+            const td = calcD(t, visiting);
+            if (td > maxParent) maxParent = td;
+          });
+          d = maxParent + 1;
+        }
+        delete visiting[name];
+        depth[name] = d;
+        return d;
+      }
+      specsArr.forEach(s => calcD(s.name, {}));
+
+      // Build links with cycle flag
+      const links = [];
+      specsArr.forEach(s => {
+        (s.depends_on || []).forEach(dep => {
+          const depName = typeof dep === 'string' ? dep : (dep && dep.name);
+          const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
+          if (!depName) return;
+          const target = nameMap[depName.toLowerCase()];
+          if (target) {
+            links.push({
+              source: s.name,
+              target: target.name,
+              uses,
+              cycle: isCycleEdge(s.name, target.name),
+            });
+          }
+        });
+      });
+
+      // Dependents count
+      const dependentsCount = {};
+      specsArr.forEach(s => { dependentsCount[s.name] = 0; });
+      Object.keys(adj).forEach(src => {
+        adj[src].forEach(tgt => {
+          dependentsCount[tgt] = (dependentsCount[tgt] || 0) + 1;
+        });
+      });
+
+      return { adj, nodeScc, inCycle, cycles, depth, dependentsCount, links };
+    }
+
     function escapeHtml(str) {
       return String(str)
         .replace(/&/g, '&amp;')
@@ -1593,11 +1730,19 @@ ${liveReload ? `  <div id="ai-panel">
         return;
       }
       let html = '';
+      if (d.inCycle) {
+        html += '<div style="margin-bottom:8px;color:#e94560;font-size:11px;">&#9888; This spec is part of a dependency cycle.</div>';
+      }
       d.depends_on.forEach(dep => {
         const depName = typeof dep === 'string' ? dep : dep.name;
         const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
+        // A dep is "cyclic" from this node's perspective if both ends sit in
+        // the same cycle SCC — match via name lookup against graphInCycle.
+        const isCyclic = !!(d.inCycle && depName && graphInCycle && graphInCycle[
+          (specs.find(s => s.name.toLowerCase() === depName.toLowerCase()) || {}).name
+        ]);
         html += '<div style="margin-bottom:6px;">';
-        html += '<span class="dep-tag">' + escapeHtml(depName) + '</span>';
+        html += '<span class="dep-tag' + (isCyclic ? ' cycle' : '') + '">' + escapeHtml(depName) + (isCyclic ? ' &#8635;' : '') + '</span>';
         if (uses.length > 0) {
           html += '<br>';
           uses.forEach(u => {
@@ -1677,50 +1822,35 @@ ${liveReload ? `  <div id="ai-panel">
       }
     }
 
-    // Build nodes and links
-    const nameSet = new Set(specs.map(s => s.name.toLowerCase()));
-    const nodes = specs.map(s => ({ id: s.name, ...s }));
-    const links = [];
-
-    specs.forEach(spec => {
-      (spec.depends_on || []).forEach(dep => {
-        const depName = typeof dep === 'string' ? dep : dep.name;
-        const uses = (typeof dep === 'object' && dep.uses) ? dep.uses : [];
-        const target = specs.find(s => s.name.toLowerCase() === depName.toLowerCase());
-        if (target) {
-          links.push({ source: spec.name, target: target.name, uses });
-        }
-      });
-    });
-
-    // Calculate dependents count for node sizing
-    const dependentsCount = {};
-    nodes.forEach(n => dependentsCount[n.id] = 0);
-    links.forEach(l => {
-      const targetId = typeof l.target === 'string' ? l.target : l.target.id;
-      dependentsCount[targetId] = (dependentsCount[targetId] || 0) + 1;
-    });
-
-    // Calculate depth for coloring
-    function calcDepth(name, memo = {}) {
-      if (memo[name] !== undefined) return memo[name];
-      const spec = specs.find(s => s.name === name);
-      if (!spec || !spec.depends_on || spec.depends_on.length === 0) {
-        memo[name] = 0;
-        return 0;
+    // Update the cycle badge in the title bar based on current graphCycles state
+    function updateCycleBadge() {
+      const el = document.getElementById('cycle-badge');
+      if (!el) return;
+      const n = (graphCycles || []).length;
+      if (n === 0) {
+        el.style.display = 'none';
+        el.textContent = '';
+      } else {
+        el.style.display = '';
+        el.textContent = n + ' cycle' + (n === 1 ? '' : 's');
+        el.title = graphCycles.map(scc => scc.join(' -> ') + ' -> ' + scc[0]).join('\\n');
       }
-      const maxParent = Math.max(...spec.depends_on.map(d => {
-        const depName = typeof d === 'string' ? d : d.name;
-        const target = specs.find(s => s.name.toLowerCase() === depName.toLowerCase());
-        return target ? calcDepth(target.name, memo) : 0;
-      }));
-      memo[name] = maxParent + 1;
-      return memo[name];
     }
 
-    const depthMemo = {};
-    nodes.forEach(n => calcDepth(n.id, depthMemo));
+    // Build nodes and links via cycle-aware analyzer
+    const initialAnalysis = analyzeGraphData(specs);
+    const nodes = specs.map(s => ({ id: s.name, ...s }));
+    const links = initialAnalysis.links;
+    const dependentsCount = { ...initialAnalysis.dependentsCount };
+    const depthMemo = { ...initialAnalysis.depth };
     const maxDepth = Math.max(0, ...Object.values(depthMemo));
+    let graphInCycle = { ...initialAnalysis.inCycle };
+    let graphCycles = initialAnalysis.cycles.slice();
+    // Annotate nodes with cycle membership for panel rendering
+    nodes.forEach(n => { n.inCycle = !!graphInCycle[n.id]; });
+    // Show cycle badge if cycles exist (runs once at startup; updateGraph
+    // calls updateCycleBadge itself after rebuild).
+    setTimeout(updateCycleBadge, 0);
 
     const colorScale = d3.scaleSequential(d3.interpolateCool)
       .domain([0, Math.max(maxDepth, 1)]);
@@ -1743,8 +1873,9 @@ ${liveReload ? `  <div id="ai-panel">
 
     svg.call(zoom);
 
-    // Arrow marker
-    svg.append("defs").append("marker")
+    // Arrow markers (normal + cycle variant)
+    const defs = svg.append("defs");
+    defs.append("marker")
       .attr("id", "arrowhead")
       .attr("viewBox", "0 -5 10 10")
       .attr("refX", 20)
@@ -1755,6 +1886,17 @@ ${liveReload ? `  <div id="ai-panel">
       .append("path")
       .attr("d", "M0,-4L8,0L0,4")
       .attr("class", "link-arrow");
+    defs.append("marker")
+      .attr("id", "arrowhead-cycle")
+      .attr("viewBox", "0 -5 10 10")
+      .attr("refX", 20)
+      .attr("refY", 0)
+      .attr("markerWidth", 8)
+      .attr("markerHeight", 8)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M0,-4L8,0L0,4")
+      .attr("class", "link-arrow cycle");
 
     // Group hulls layer (drawn behind everything)
     const hullGroup = g.append("g").attr("class", "hulls");
@@ -1774,8 +1916,8 @@ ${liveReload ? `  <div id="ai-panel">
     const link = g.selectAll(".link")
       .data(links)
       .join("line")
-      .attr("class", "link")
-      .attr("marker-end", "url(#arrowhead)");
+      .attr("class", d => "link" + (d.cycle ? " cycle" : ""))
+      .attr("marker-end", d => d.cycle ? "url(#arrowhead-cycle)" : "url(#arrowhead)");
 
     // Draw link labels (feature uses) — hidden by default
     let showEdgeLabels = false;
@@ -1797,6 +1939,7 @@ ${liveReload ? `  <div id="ai-panel">
       .data(nodes)
       .join("g")
       .attr("class", "node")
+      .classed("cycle", d => !!d.inCycle)
       .call(d3.drag()
         .on("start", dragStarted)
         .on("drag", dragged)
@@ -2006,6 +2149,50 @@ ${liveReload ? `  <div id="ai-panel">
       }
     }
 
+    // --- Groups layout ---
+    // Arrange nodes in a grid of clusters, one cluster per group.
+    // Nodes without a group go into a dedicated "(ungrouped)" cluster.
+    function computeGroupsPositions() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      const byGroup = {};
+      nodes.forEach(n => {
+        const key = n.group || '(ungrouped)';
+        if (!byGroup[key]) byGroup[key] = [];
+        byGroup[key].push(n);
+      });
+
+      const groupKeys = Object.keys(byGroup).sort();
+      const groupCount = groupKeys.length;
+      if (groupCount === 0) return;
+
+      const cols = Math.ceil(Math.sqrt(groupCount));
+      const rows = Math.ceil(groupCount / cols);
+      const cellW = w / cols;
+      const cellH = h / rows;
+
+      groupKeys.forEach((key, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const cx = cellW * (col + 0.5);
+        const cy = cellH * (row + 0.5);
+        const members = byGroup[key];
+        const ringCount = members.length;
+        const radius = Math.min(cellW, cellH) * 0.32;
+        if (ringCount === 1) {
+          members[0].fx = cx;
+          members[0].fy = cy;
+        } else {
+          members.forEach((n, i) => {
+            const angle = (i / ringCount) * Math.PI * 2 - Math.PI / 2;
+            n.fx = cx + Math.cos(angle) * radius;
+            n.fy = cy + Math.sin(angle) * radius;
+          });
+        }
+      });
+    }
+
     // --- Layout switching ---
     function setLayout(layout) {
       currentLayout = layout;
@@ -2027,6 +2214,14 @@ ${liveReload ? `  <div id="ai-panel">
         simulation.force("center", null);
         simulation.force("collision", null);
         computeTreePositions();
+        simulation.alpha(0.5).restart();
+      } else if (layout === 'groups') {
+        // Stop simulation forces, pin nodes into group clusters
+        simulation.force("link", null);
+        simulation.force("charge", null);
+        simulation.force("center", null);
+        simulation.force("collision", null);
+        computeGroupsPositions();
         simulation.alpha(0.5).restart();
       } else if (layout === 'manual') {
         // Stop simulation entirely, keep nodes where they are
@@ -2050,6 +2245,9 @@ ${liveReload ? `  <div id="ai-panel">
         simulation.alpha(0.3).restart();
       } else if (currentLayout === 'tree') {
         computeTreePositions();
+        simulation.alpha(0.3).restart();
+      } else if (currentLayout === 'groups') {
+        computeGroupsPositions();
         simulation.alpha(0.3).restart();
       }
     });
