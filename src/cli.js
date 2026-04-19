@@ -5,6 +5,10 @@
  * @returns {Object} parsed options
  */
 export function parseCliArgs(args) {
+  if (args.includes("--version") || args.includes("-v")) {
+    return { version: true };
+  }
+
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     return { help: true };
   }
@@ -40,5 +44,5 @@ export function parseCliArgs(args) {
   // Parse -y / --yes flag (auto-create directory)
   const yes = args.includes("-y") || args.includes("--yes");
 
-  return { specDir, mode, outputPath, port, yes, help: false };
+  return { specDir, mode, outputPath, port, yes, help: false, version: false };
 }

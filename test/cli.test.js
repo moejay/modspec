@@ -50,6 +50,21 @@ describe("parseCliArgs", () => {
     expect(result.help).toBe(true);
   });
 
+  it("returns version flag when --version is present", () => {
+    const result = parseCliArgs(["--version"]);
+    expect(result.version).toBe(true);
+  });
+
+  it("returns version flag when -v is present", () => {
+    const result = parseCliArgs(["-v"]);
+    expect(result.version).toBe(true);
+  });
+
+  it("prefers version flag over help and specDir", () => {
+    const result = parseCliArgs(["./specs", "-v"]);
+    expect(result.version).toBe(true);
+  });
+
   it("errors when --output has no value", () => {
     const result = parseCliArgs(["./specs", "--output"]);
     expect(result.error).toContain("--output requires a file path");

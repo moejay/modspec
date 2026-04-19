@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /**
  * Get the current package version from package.json.
  */
-async function getCurrentVersion() {
+export async function getCurrentVersion() {
   const pkg = JSON.parse(
     await readFile(join(__dirname, "..", "package.json"), "utf-8"),
   );

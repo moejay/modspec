@@ -4,7 +4,7 @@ import { parseSpecDirectory } from "../src/parser.js";
 import { generateHTML } from "../src/generator.js";
 import { createModspecServer } from "../src/server.js";
 import { parseCliArgs } from "../src/cli.js";
-import { checkForUpdate } from "../src/version.js";
+import { checkForUpdate, getCurrentVersion } from "../src/version.js";
 import { analyzeGraph, formatCycle } from "../src/cycles.js";
 import { writeFile, mkdtemp, mkdir } from "fs/promises";
 import { tmpdir } from "os";
@@ -24,6 +24,7 @@ Options:
   --output, -o  Save the HTML file to the specified path instead of serving
   --port        Port for the dev server (default: 3333)
   -y, --yes     Auto-create the spec directory if it doesn't exist
+  --version, -v Show the installed version
   --help, -h    Show this help message
 
 Examples:
@@ -90,6 +91,11 @@ async function promptUser(question) {
 
 async function main() {
   const opts = parseCliArgs(process.argv.slice(2));
+
+  if (opts.version) {
+    console.log(await getCurrentVersion());
+    process.exit(0);
+  }
 
   if (opts.help) {
     console.log(HELP_TEXT);
