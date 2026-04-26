@@ -658,26 +658,26 @@ export function generateHTML(specs, options = {}) {
 
     .link {
       fill: none;
-      stroke: #555;
-      stroke-width: 1.5px;
-      stroke-opacity: 0.6;
+      stroke: #7a7a9a;
+      stroke-width: 1.75px;
+      stroke-opacity: 0.85;
     }
 
     .link.cycle {
       stroke: #e94560;
-      stroke-width: 2px;
-      stroke-opacity: 0.85;
+      stroke-width: 2.25px;
+      stroke-opacity: 0.95;
       stroke-dasharray: 5 3;
     }
 
     .link-arrow {
-      fill: #555;
-      fill-opacity: 0.6;
+      fill: #b8b8d4;
+      fill-opacity: 1;
     }
 
     .link-arrow.cycle {
       fill: #e94560;
-      fill-opacity: 0.9;
+      fill-opacity: 1;
     }
 
     .node.cycle circle {
@@ -1878,24 +1878,24 @@ ${liveReload ? `  <div id="ai-panel">
     defs.append("marker")
       .attr("id", "arrowhead")
       .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 20)
+      .attr("refX", 18)
       .attr("refY", 0)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
+      .attr("markerWidth", 12)
+      .attr("markerHeight", 12)
       .attr("orient", "auto")
       .append("path")
-      .attr("d", "M0,-4L8,0L0,4")
+      .attr("d", "M0,-5L10,0L0,5L2.5,0Z")
       .attr("class", "link-arrow");
     defs.append("marker")
       .attr("id", "arrowhead-cycle")
       .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 20)
+      .attr("refX", 18)
       .attr("refY", 0)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
+      .attr("markerWidth", 12)
+      .attr("markerHeight", 12)
       .attr("orient", "auto")
       .append("path")
-      .attr("d", "M0,-4L8,0L0,4")
+      .attr("d", "M0,-5L10,0L0,5L2.5,0Z")
       .attr("class", "link-arrow cycle");
 
     // Group hulls layer (drawn behind everything)
