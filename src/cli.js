@@ -1,3 +1,10 @@
+const SUBCOMMANDS = ["list", "show", "features", "deps", "validate"];
+const SUBCOMMANDS_REQUIRING_NAME = new Set(["show", "deps"]);
+
+function isSubcommandKeyword(arg) {
+  return SUBCOMMANDS.includes(arg);
+}
+
 /**
  * Parse CLI arguments for modspec.
  *
@@ -13,9 +20,25 @@ export function parseCliArgs(args) {
     return { help: true };
   }
 
+  const json = args.includes("--json");
+  const yes = args.includes("-y") || args.includes("--yes");
+
+  // Subcommand mode: first arg is a known keyword.
+  if (isSubcommandKeyword(args[0])) {
+    const mode = args[0];
+    const specDir = args[1];
+    const name = args[2] && !args[2].startsWith("-") ? args[2] : null;
+
+    if (SUBCOMMANDS_REQUIRING_NAME.has(mode) && !name) {
+      return { error: `${mode} requires a spec name` };
+    }
+
+    return { mode, specDir, name, json, yes, help: false, version: false };
+  }
+
+  // Default mode: first non-flag arg is specDir, mode is serve or static.
   const specDir = args[0];
 
-  // Parse --output flag
   let outputPath = null;
   let mode = "serve";
   const outputIdx = args.indexOf("--output");
@@ -30,7 +53,6 @@ export function parseCliArgs(args) {
     mode = "static";
   }
 
-  // Parse --port flag
   let port = 3333;
   const portIdx = args.indexOf("--port");
   if (portIdx !== -1) {
@@ -41,8 +63,14 @@ export function parseCliArgs(args) {
     port = Number(portStr);
   }
 
-  // Parse -y / --yes flag (auto-create directory)
-  const yes = args.includes("-y") || args.includes("--yes");
-
-  return { specDir, mode, outputPath, port, yes, help: false, version: false };
+  return {
+    specDir,
+    mode,
+    outputPath,
+    port,
+    yes,
+    json,
+    help: false,
+    version: false,
+  };
 }

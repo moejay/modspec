@@ -176,11 +176,23 @@ npx @moejay/modspec ./spec/ --output graph.html
 ## CLI reference
 
 ```
-npx @moejay/modspec <directory>                   Start dev server with live reload (default)
-npx @moejay/modspec <directory> --output <file>   Save graph to a static HTML file
-npx @moejay/modspec <directory> --port <number>   Custom port for dev server (default: 3333)
-npx @moejay/modspec <directory> -y                Auto-create spec directory if missing
-npx @moejay/modspec --help                        Show help
+npx @moejay/modspec <directory>                       Start dev server with live reload (default)
+npx @moejay/modspec <directory> --output <file>       Save graph to a static HTML file
+npx @moejay/modspec <directory> --port <number>       Custom port for dev server (default: 3333)
+npx @moejay/modspec <directory> -y                    Auto-create spec directory if missing
+npx @moejay/modspec --help                            Show help
+```
+
+### Read-only subcommands (for humans and coding agents)
+
+Each subcommand also accepts `--json` for machine-readable output.
+
+```
+npx @moejay/modspec list <directory>                  Print all specs (group, dep count, feature count)
+npx @moejay/modspec show <directory> <name>           Print one spec's full info — deps, dependents, features, body
+npx @moejay/modspec features <directory> [<name>]     List features (across all specs, or scoped to one)
+npx @moejay/modspec deps <directory> <name>           Print forward + reverse dependency tree
+npx @moejay/modspec validate <directory>              Lint specs: broken refs, missing feature dirs, cycles
 ```
 
 ## Brownfield adoption

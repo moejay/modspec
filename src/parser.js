@@ -1,6 +1,6 @@
 import matter from "gray-matter";
 import { readFile, readdir, access } from "fs/promises";
-import { join, extname, relative, basename } from "path";
+import { join, extname, relative, basename, resolve } from "path";
 
 /**
  * Normalize a depends_on entry to the canonical { name, uses } form.
@@ -136,7 +136,15 @@ export async function parseSpecDirectory(dirPath, options = {}) {
     .filter((f) => extname(f) === ".md")
     .map((f) => join(dirPath, f));
 
-  const results = await Promise.all(mdFiles.map(parseSpecFile));
+  const results = await Promise.all(
+    mdFiles.map(async (filePath) => {
+      const spec = await parseSpecFile(filePath);
+      if (spec && options.projectRoot) {
+        spec.specPath = relative(options.projectRoot, filePath);
+      }
+      return spec;
+    }),
+  );
   const specs = results.filter((r) => r !== null);
 
   // Resolve feature files for each spec

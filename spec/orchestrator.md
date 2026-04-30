@@ -5,7 +5,7 @@ group: interface
 tags: [cli, entry-point, node, orchestration]
 depends_on:
   - name: arg-parser
-    uses: [argument-parsing]
+    uses: [argument-parsing, subcommand-parsing]
   - name: spec-parser
     uses: [directory-parsing]
   - name: graph-generator
@@ -14,6 +14,8 @@ depends_on:
     uses: [server-lifecycle]
   - name: version-checker
     uses: [update-check]
+  - name: cli-commands
+    uses: [list, show, features, deps, validate]
 features: features/orchestrator/
 ---
 
@@ -29,6 +31,7 @@ Responsibilities:
 4. **Route to mode**:
    - **Dev server** (default): delegates to http-server, registers `SIGINT`/`SIGTERM` for graceful shutdown
    - **Static export** (`--output`): calls graph-generator, writes HTML to file or opens temp file in browser via `open` package
+   - **Subcommand modes** (`list` / `show` / `features` / `deps` / `validate`): delegates to the corresponding handler in cli-commands, prints the returned string, exits with the handler's reported exit code
 5. **Kick off version check** non-blocking on startup (`checkForUpdate().catch(() => {})`)
 
 Uses Node built-ins: `fs/promises`, `os`, `path`, `readline`. The `open` npm package is dynamically imported only in static export mode.

@@ -26,3 +26,16 @@ Feature: mode-routing
     Given the spec directory contains valid specs
     When parsing completes
     Then a message like "Found N spec(s): name1, name2" is logged
+
+  Scenario: Dispatch to cli-commands handler when mode is a subcommand
+    Given mode is one of "list", "show", "features", "deps", or "validate"
+    When the orchestrator routes
+    Then the matching cli-commands handler is invoked with parsed specs and options
+      And the handler's stringified output is written to stdout
+      And the process exits with the handler's reported exit code
+
+  Scenario: Subcommand modes do not start the dev server
+    Given mode is "list"
+    When the orchestrator routes
+    Then createModspecServer is not called
+      And no SIGINT/SIGTERM handlers are registered

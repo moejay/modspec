@@ -6,6 +6,7 @@ import { createModspecServer } from "../src/server.js";
 import { parseCliArgs } from "../src/cli.js";
 import { checkForUpdate, getCurrentVersion } from "../src/version.js";
 import { analyzeGraph, formatCycle } from "../src/cycles.js";
+import { COMMAND_HANDLERS } from "../src/commands.js";
 import { writeFile, mkdtemp, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, dirname } from "path";
@@ -16,22 +17,30 @@ const HELP_TEXT = `
 modspec — Visualize spec file dependencies as an interactive graph
 
 Usage:
-  modspec <directory>                   Start dev server with live reload (default)
-  modspec <directory> --output <file>   Save graph to a static HTML file
-  modspec <directory> --port <number>   Custom port for dev server (default: 3333)
+  modspec <directory>                       Start dev server with live reload (default)
+  modspec <directory> --output <file>       Save graph to a static HTML file
+  modspec <directory> --port <number>       Custom port for dev server (default: 3333)
+
+Subcommands (read-only — for humans and coding agents):
+  modspec list <directory>                  Print all specs
+  modspec show <directory> <name>           Print one spec's full info
+  modspec features <directory> [<name>]     List features (all, or for one spec)
+  modspec deps <directory> <name>           Print forward + reverse dependency tree
+  modspec validate <directory>              Lint specs and features
 
 Options:
   --output, -o  Save the HTML file to the specified path instead of serving
   --port        Port for the dev server (default: 3333)
+  --json        Subcommands: emit machine-readable JSON
   -y, --yes     Auto-create the spec directory if it doesn't exist
   --version, -v Show the installed version
   --help, -h    Show this help message
 
 Examples:
   modspec ./spec/
-  modspec ./spec/ --port 4000
-  modspec ./spec/ --output graph.html
-  modspec ./spec/ -y
+  modspec list ./spec/
+  modspec show ./spec/ auth --json
+  modspec validate ./spec/
 `;
 
 function printSpecSummary(specs, dirPath) {
@@ -105,6 +114,25 @@ async function main() {
   if (opts.error) {
     console.error(`Error: ${opts.error}`);
     process.exit(1);
+  }
+
+  // Subcommand dispatch — read-only commands skip the dev server lifecycle
+  if (COMMAND_HANDLERS[opts.mode]) {
+    const dirPath = resolve(opts.specDir);
+    if (!existsSync(dirPath)) {
+      console.error(`Error: directory not found: ${dirPath}`);
+      process.exit(1);
+    }
+    const projectRoot = dirname(dirPath);
+    const specs = await parseSpecDirectory(dirPath, { projectRoot });
+    const handler = COMMAND_HANDLERS[opts.mode];
+    const { output, exitCode } = handler(specs, opts);
+    if (exitCode !== 0) {
+      console.error(output);
+    } else {
+      console.log(output);
+    }
+    process.exit(exitCode);
   }
 
   // Check for updates (non-blocking)
