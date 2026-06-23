@@ -16,6 +16,11 @@ Feature: request-routing
     When a GET request hits /api/specs
     Then the current parsed specs are returned as JSON
 
+  Scenario: Specs JSON carries test status when a results file is present
+    Given the server is running with a Cucumber JSON results file
+    When a GET request hits /api/specs
+    Then each matched spec carries testStatus and its scenarios carry a status
+
   Scenario: Return 404 for unknown routes
     Given the server is running
     When a GET request hits an unrecognized path

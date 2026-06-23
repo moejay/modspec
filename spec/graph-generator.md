@@ -5,7 +5,7 @@ group: domain
 tags: [visualization, html-generation, template]
 depends_on:
   - name: graph-client
-    uses: [force-simulation, side-panel, layout-modes, group-clustering]
+    uses: [force-simulation, side-panel, layout-modes, group-clustering, test-status]
 features: features/graph-generator/
 ---
 

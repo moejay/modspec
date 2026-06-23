@@ -31,6 +31,21 @@ Feature: argument-parsing
     When arguments are parsed
     Then an error is returned: "--port requires a number"
 
+  Scenario: Parse --results flag with path
+    Given the argument array includes "--results out/cucumber.json"
+    When arguments are parsed
+    Then results is "out/cucumber.json"
+
+  Scenario: Error when --results has no path
+    Given the argument array ends with "--results"
+    When arguments are parsed
+    Then an error is returned: "--results requires a file path"
+
+  Scenario: results defaults to null when flag absent
+    Given the argument array is ["./spec/"]
+    When arguments are parsed
+    Then results defaults to null
+
   Scenario: Parse -y flag for auto-confirm
     Given the argument array includes "-y"
     When arguments are parsed

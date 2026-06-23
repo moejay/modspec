@@ -3,6 +3,7 @@
 import { parseSpecDirectory } from "../src/parser.js";
 import { generateHTML } from "../src/generator.js";
 import { createModspecServer } from "../src/server.js";
+import { resolveResultsPath, parseResultsFile, mergeResults } from "../src/results.js";
 import { parseCliArgs } from "../src/cli.js";
 import { checkForUpdate, getCurrentVersion } from "../src/version.js";
 import { analyzeGraph, formatCycle } from "../src/cycles.js";
@@ -31,6 +32,8 @@ Subcommands (read-only — for humans and coding agents):
 Options:
   --output, -o  Save the HTML file to the specified path instead of serving
   --port        Port for the dev server (default: 3333)
+  --results     Path to a Cucumber JSON test-results file to overlay on the graph
+                (auto-detected from results/, reports/, test-results/ when omitted)
   --json        Subcommands: emit machine-readable JSON
   -y, --yes     Auto-create the spec directory if it doesn't exist
   --version, -v Show the installed version
@@ -169,6 +172,18 @@ async function main() {
 
   printSpecSummary(specs, dirPath);
 
+  // Overlay test results (explicit --results path or auto-detected)
+  const resultsFile = resolveResultsPath(projectRoot, opts.results);
+  if (resultsFile) {
+    const lookup = await parseResultsFile(resultsFile);
+    if (lookup) {
+      mergeResults(specs, lookup);
+      console.log(`Loaded test results from: ${resultsFile}`);
+    } else if (opts.results) {
+      console.warn(`Warning: could not read results file: ${resultsFile}`);
+    }
+  }
+
   if (opts.mode === "static") {
     // Static export mode
     const html = generateHTML(specs);
@@ -191,6 +206,7 @@ async function main() {
     const server = await createModspecServer({
       specDir: dirPath,
       port: opts.port,
+      resultsPath: opts.results,
     });
 
     console.log(`modspec serving at ${server.address} (watching ${dirPath})`);

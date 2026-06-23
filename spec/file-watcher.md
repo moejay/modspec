@@ -15,10 +15,10 @@ Monitors the spec directory and all referenced feature directories for file chan
 
 ### Watch configuration
 
-- **Paths watched**: the spec directory plus every feature directory referenced by parsed specs (`projectRoot + spec.features`)
+- **Paths watched**: the spec directory, every feature directory referenced by parsed specs (`projectRoot + spec.features`), and the resolved test-results file when one is available
 - **Polling mode**: `usePolling: true` with 100ms interval — ensures reliable detection across filesystems (Docker volumes, NFS, etc.)
 - **Ignore initial**: set to `true` so existing files don't trigger events on startup
-- **Events**: listens for `add`, `change`, and `unlink` on `.md` and `.feature` files only
+- **Events**: listens for `add`, `change`, and `unlink` on `.md`, `.feature`, and the watched results `.json` file
 
 ### Debouncing
 
@@ -29,8 +29,9 @@ Rapid file changes (e.g., editor save + lint fix in quick succession) are deboun
 On debounced file change:
 1. Re-parses the entire spec directory (including feature files)
 2. Rebuilds the spec file path map (for the editor to know which file to write back)
-3. Updates the in-memory `specs` array
-4. Delegates broadcast to the SSE broadcaster
+3. Re-reads the results file (if any) and merges test status onto the specs
+4. Updates the in-memory `specs` array
+5. Delegates broadcast to the SSE broadcaster
 
 ### Cleanup
 

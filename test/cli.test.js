@@ -95,4 +95,31 @@ describe("parseCliArgs", () => {
     expect(result.yes).toBe(true);
     expect(result.port).toBe(5000);
   });
+
+  it("defaults results to null", () => {
+    const result = parseCliArgs(["./specs"]);
+    expect(result.results).toBeNull();
+  });
+
+  it("parses --results flag with path", () => {
+    const result = parseCliArgs(["./specs", "--results", "out/cucumber.json"]);
+    expect(result.results).toBe("out/cucumber.json");
+  });
+
+  it("errors when --results has no value", () => {
+    const result = parseCliArgs(["./specs", "--results"]);
+    expect(result.error).toContain("--results requires a file path");
+  });
+
+  it("passes results through in static mode", () => {
+    const result = parseCliArgs([
+      "./specs",
+      "--output",
+      "g.html",
+      "--results",
+      "r.json",
+    ]);
+    expect(result.mode).toBe("static");
+    expect(result.results).toBe("r.json");
+  });
 });

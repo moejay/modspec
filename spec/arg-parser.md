@@ -18,6 +18,7 @@ Implemented in `src/cli.js`. Supports:
 - **Positional `name`**: third positional arg, used by `show` / `features` / `deps`. Required for `show` and `deps`; optional for `features` (omit to list features for all specs).
 - **`--output` / `-o`**: switches `mode` to `static`, captures output file path. Mutually exclusive with subcommands.
 - **`--port`**: custom port number for dev server (default 3333). Only meaningful in `serve` mode.
+- **`--results`**: path to a Cucumber JSON test-results file to overlay on the graph. Captured as `results` (default `null`). When omitted, the orchestrator auto-detects a results file from conventional locations. Meaningful in `serve` and `static` modes.
 - **`--json`**: emit JSON instead of human-readable text. Only meaningful in subcommand modes (list / show / features / deps / validate).
 - **`-y` / `--yes`**: auto-confirm directory creation prompts.
 - **`--help` / `-h`**: help flag (also triggers when no args given).

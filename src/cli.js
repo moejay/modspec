@@ -63,11 +63,21 @@ export function parseCliArgs(args) {
     port = Number(portStr);
   }
 
+  let results = null;
+  const resultsIdx = args.indexOf("--results");
+  if (resultsIdx !== -1) {
+    results = args[resultsIdx + 1];
+    if (!results || results.startsWith("-")) {
+      return { error: "--results requires a file path" };
+    }
+  }
+
   return {
     specDir,
     mode,
     outputPath,
     port,
+    results,
     yes,
     json,
     help: false,
