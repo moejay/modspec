@@ -1,6 +1,6 @@
 {
   "name": "@moejay/modspec",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Spec-driven dependency graph visualizer with composable modules and feature tracking",
   "type": "module",
   "bin": {
@@ -32,7 +32,7 @@
   },
   "homepage": "https://moejay.github.io/modspec",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --reporter=default --reporter=json --outputFile=results/vitest-results.json",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -42,6 +42,8 @@
   },
   "devDependencies": {
     "@amiceli/vitest-cucumber": "^5.2.1",
+    "d3": "^7.9.0",
+    "jsdom": "^29.1.1",
     "vitest": "^3.1.1"
   }
 }

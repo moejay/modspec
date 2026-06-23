@@ -308,4 +308,72 @@ describe("createModspecServer", () => {
 
     expect(res.status).toBe(404);
   });
+
+  // Build a temp project with one spec, one feature, and a Cucumber report.
+  async function seedResultsProject(reportPath) {
+    await mkdir(join(watchDir, "features", "demo"), { recursive: true });
+    await writeFile(
+      join(watchDir, "demo.md"),
+      "---\nname: Demo\nfeatures: features/demo/\n---\n\n# Demo\n",
+      "utf-8",
+    );
+    await writeFile(
+      join(watchDir, "features", "demo", "login.feature"),
+      "Feature: user-login\n\n  Scenario: Successful login\n    Given a user\n",
+      "utf-8",
+    );
+    const report = [
+      {
+        name: "user-login",
+        elements: [
+          {
+            type: "scenario",
+            name: "Successful login",
+            steps: [{ keyword: "Given ", result: { status: "passed" } }],
+          },
+        ],
+      },
+    ];
+    await mkdir(join(reportPath, ".."), { recursive: true });
+    await writeFile(reportPath, JSON.stringify(report), "utf-8");
+  }
+
+  it("merges explicit --results test status into /api/specs", async () => {
+    const reportPath = join(watchDir, "out", "cucumber.json");
+    await seedResultsProject(reportPath);
+
+    server = await createModspecServer({
+      specDir: watchDir,
+      projectRoot: watchDir,
+      port: 0,
+      resultsPath: reportPath,
+    });
+
+    const data = await fetch(
+      `http://localhost:${server.port}/api/specs`,
+    ).then((r) => r.json());
+
+    const demo = data.find((s) => s.name === "Demo");
+    expect(demo.testStatus).toBe("passed");
+    expect(demo.testCounts).toEqual({ passed: 1, failed: 0, total: 1 });
+    expect(demo.featureFiles[0].scenarios[0].status).toBe("passed");
+  });
+
+  it("auto-detects a results file under the project root", async () => {
+    // results/cucumber.json is a conventional auto-detect location
+    await seedResultsProject(join(watchDir, "results", "cucumber.json"));
+
+    server = await createModspecServer({
+      specDir: watchDir,
+      projectRoot: watchDir,
+      port: 0,
+    });
+
+    const data = await fetch(
+      `http://localhost:${server.port}/api/specs`,
+    ).then((r) => r.json());
+
+    const demo = data.find((s) => s.name === "Demo");
+    expect(demo.testStatus).toBe("passed");
+  });
 });

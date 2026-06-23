@@ -2,3 +2,12 @@ node_modules/
 dist/
 *.tgz
 .DS_Store
+
+# Test report consumed by the graph overlay
+results/
+
+# Local agent / tooling artifacts
+.claude/
+.playwright-mcp/
+test-results/
+cycle-graph.png

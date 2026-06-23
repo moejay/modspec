@@ -259,3 +259,39 @@ describe("generateHTML", () => {
     expect(html).toContain('"project-scaffolding"');
   });
 });
+
+describe("generateHTML — test status rendering", () => {
+  it("embeds a statusColor helper", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain("function statusColor");
+  });
+
+  it("embeds status pill markup and styles", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain("status-pill");
+    expect(html).toContain("function statusBadge");
+  });
+
+  it("embeds a test-status legend", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain('id="test-legend"');
+  });
+
+  it("embeds a spec-level test summary element", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain('id="panel-test-summary"');
+  });
+
+  it("renders scenario status from merged data", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain("scenario.status");
+  });
+});
+
+describe("generateHTML — circle count label", () => {
+  it("embeds an in-circle passed/total count label", () => {
+    const html = generateHTML(sampleSpecs);
+    expect(html).toContain("function countLabel");
+    expect(html).toContain("node-count");
+  });
+});

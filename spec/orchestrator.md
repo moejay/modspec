@@ -16,6 +16,8 @@ depends_on:
     uses: [update-check]
   - name: cli-commands
     uses: [list, show, features, deps, validate]
+  - name: results-parser
+    uses: [results-discovery, results-merge]
 features: features/orchestrator/
 ---
 

@@ -4,13 +4,13 @@ Feature: mode-routing
   Scenario: Start dev server by default
     Given mode is "serve"
     When the orchestrator routes
-    Then createModspecServer is called with specDir and port
+    Then createModspecServer is called with specDir, port, and the results path
     And SIGINT/SIGTERM handlers are registered for graceful shutdown
 
   Scenario: Static export to specified file
     Given mode is "static" and outputPath is "graph.html"
     When the orchestrator routes
-    Then generateHTML is called and HTML is written to "graph.html"
+    Then test results are merged onto specs and generateHTML is called and HTML is written to "graph.html"
 
   Scenario: Static export to temp file with browser open
     Given mode is "static" and outputPath is null

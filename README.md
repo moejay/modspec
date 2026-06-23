@@ -156,20 +156,37 @@ npx @moejay/modspec ./spec/ --port 4000
 
 # Export a static HTML file instead
 npx @moejay/modspec ./spec/ --output graph.html
+
+# Overlay test results (auto-detected from results/, reports/, test-results/ when omitted)
+npx @moejay/modspec ./spec/ --results results/cucumber.json
 ```
+
+### Visualizing test results
+
+modspec never runs your tests — it ingests a test report and overlays the outcomes. Two formats are accepted, auto-detected by shape:
+
+- **Cucumber JSON** — emitted by every Gherkin runner (`cucumber-js`, `cucumber-jvm`, `behave`, `cucumber-ruby`, `godog`, Reqnroll, `cucumber-rs`), so it stays language-agnostic.
+- **Jest / vitest JSON** — the `--reporter=json` output common across the JS ecosystem. For `vitest-cucumber`/`jest-cucumber` runs the `Feature:`/`Scenario:` titles join directly; for plain `describe`/`it` suites the top-level `describe` is the feature and the `it` is the scenario.
+
+```bash
+# vitest / jest example
+npx vitest run --reporter=json --outputFile=results/vitest-results.json
+npx @moejay/modspec ./spec/          # auto-detected
+```
+
+Results join onto specs by feature name and scenario name: each node is ringed green (all passing), red (any failing), or amber (pending/skipped) and shows a `passed/total` count (e.g. `15/19`) inside the circle, and the side panel shows per-scenario ✓/✗ pills plus a `passed / total` summary. A legend appears whenever any spec has test data. In dev-server mode the overlay live-updates as the report file changes.
 
 ## Features
 
 - **Interactive graph** — D3 force-directed dependency visualization with zoom, pan, and drag
 - **Group clustering** — Specs in the same group are visually clustered with colored hulls
 - **Feature tracking** — See which features flow along each dependency edge
+- **Test results overlay** — Point modspec at a Cucumber JSON **or** Jest/vitest JSON report and the graph colours each node by pass/fail, shows a `passed/total` count inside every circle, and lists per-scenario status pills in the side panel. Auto-detected from `results/`, `reports/`, `test-results/`, or pass `--results <file>`. Live-updates as tests re-run
 - **Three layout modes** — Force (physics-based), Tree (top-down hierarchy), Manual (free positioning)
 - **Side panel** — Click any node to see description, group, tags, dependencies with used features, rendered markdown body, and Gherkin scenarios
 - **Composable specs** — Specs are modules with clear interfaces defined by their features
 - **Live reload** — Dev server watches your spec and feature files, pushes changes via SSE instantly
 - **Inline editing** — Edit spec bodies and feature files directly in the browser (dev server mode)
-- **AI spec assistant** — Create new specs from the UI with an AI chat panel powered by Claude Code CLI. Describe what you need in natural language, review the generated spec, and save it with one click
-- **Configurable AI settings** — Fine-tune allowed tools, permission modes, and custom CLI args for the AI assistant. Settings persist in localStorage across sessions
 - **Static export** — Generate a self-contained HTML file with `--output`
 - **Version check** — Notifies you when a new version is available
 
@@ -179,6 +196,7 @@ npx @moejay/modspec ./spec/ --output graph.html
 npx @moejay/modspec <directory>                       Start dev server with live reload (default)
 npx @moejay/modspec <directory> --output <file>       Save graph to a static HTML file
 npx @moejay/modspec <directory> --port <number>       Custom port for dev server (default: 3333)
+npx @moejay/modspec <directory> --results <file>      Overlay Cucumber JSON test results on the graph
 npx @moejay/modspec <directory> -y                    Auto-create spec directory if missing
 npx @moejay/modspec --help                            Show help
 ```
@@ -198,6 +216,24 @@ npx @moejay/modspec validate <directory>              Lint specs: broken refs, m
 ## Brownfield adoption
 
 Already have a codebase? Install the skills (`npx skills install moejay/modspec`) and use `modspec-init` to analyze your existing code and generate spec + feature files automatically. It identifies modules, their dependencies, and public interfaces from your project structure and import patterns.
+
+## Development
+
+modspec is itself spec-driven: every module has a spec in `spec/` and Gherkin scenarios in `features/`, and **every feature file is bound to executable tests** (via `@amiceli/vitest-cucumber`), so the scenarios are the contract.
+
+```bash
+npm test          # run the suite once; also writes results/vitest-results.json
+npm run test:watch
+```
+
+`npm test` emits a `results/vitest-results.json` report, so you can dogfood the overlay on modspec itself:
+
+```bash
+npm test
+npx . ./spec/     # the graph lights up green with each module's passed/total count
+```
+
+Requires Node ≥ 20 for development (the `jsdom` test harness). The published CLI runs on Node ≥ 18.
 
 ## License
 

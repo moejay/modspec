@@ -40,3 +40,8 @@ Feature: html-generation
     Given the generated HTML
     When loaded in a browser
     Then only CDN scripts are fetched — no other external requests
+
+  Scenario: Embed test-status rendering
+    Given any call to generateHTML
+    When HTML is produced
+    Then a statusColor function and status-pill styles are embedded for visualizing test results

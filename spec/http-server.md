@@ -14,12 +14,18 @@ depends_on:
     uses: [event-streaming]
   - name: spec-editor
     uses: [spec-write-back, feature-write-back]
+  - name: results-parser
+    uses: [results-discovery, results-merge]
 features: features/http-server/
 ---
 
 # HTTP Server
 
-Development server implemented with Node's built-in `http` module — no Express, no framework. Defined in `src/server.js` as `createModspecServer({ specDir, port, projectRoot })`.
+Development server implemented with Node's built-in `http` module — no Express, no framework. Defined in `src/server.js` as `createModspecServer({ specDir, port, projectRoot, resultsPath })`.
+
+### Test results overlay
+
+When a results file is available — given explicitly via `resultsPath` (the `--results` flag) or auto-detected by `results-parser` — the server merges Cucumber JSON test outcomes onto the parsed specs (via `mergeResults`) before serving HTML and before every SSE broadcast. The served `/api/specs` payload and the live-reload stream therefore carry per-scenario `status`, plus `testStatus`/`testCounts` on each feature and spec. With no results file, specs are served unannotated.
 
 ### Endpoints
 

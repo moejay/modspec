@@ -38,6 +38,14 @@ Clicking a node opens a slide-in panel with two tabs:
 - **Spec tab**: renders the spec's markdown body via `marked.js`
 - **Features tab**: lists all associated `.feature` files with collapsible scenarios showing Given/When/Then steps
 
+### Test status
+
+When specs carry merged test results (`testStatus`, `testCounts`, and per-scenario `status` from results-parser), the client surfaces them:
+- **Node ring**: a `statusColor()` helper maps a status to a colour (green passed, red failed, amber for pending/skipped/undefined/ambiguous). Nodes with a `testStatus` get a thicker stroke in that colour; nodes with no data keep their depth-based stroke.
+- **Node count**: a `countLabel()` helper renders a `passed/total` count (e.g. `15/19`) centred inside the circle when the spec carries `testCounts`.
+- **Side panel**: each scenario shows a status pill (✓/✗/–), each feature file shows a `passed / total` summary, and the spec header shows an overall pass count.
+- **Legend**: when any spec has test data, a small legend maps the colours to passed / failed / other / no data.
+
 ### Inline editing (dev mode only)
 
 When live reload is active, the side panel includes edit buttons:
