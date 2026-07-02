@@ -1,6 +1,6 @@
 ---
 name: modspec
-description: Spec-driven development workflow for modspec projects. Use whenever you author specs, edit them, or implement code in a modspec project — every code change MUST flow through spec/feature update first, then red/green TDD against the feature suite. Replaces the previous modspec-fix and modspec-implement skills.
+description: Spec-driven development workflow for modspec projects. Use whenever you author specs, edit them, or implement code in a modspec project.
 license: MIT
 metadata:
   author: modspec
@@ -16,9 +16,12 @@ This skill defines the **complete workflow** for working in a modspec project: a
 When this skill is loaded, every code change in the project follows the same flow, no exceptions:
 
 1. **Phase 1 — Update the spec and features first.** If the requested change isn't already covered by an existing scenario, the spec or `.feature` file gets edited *before* any source code is touched.
+
 2. **Phase 2 — Red/green TDD against the feature suite.** New or modified scenarios must fail first, then implementation makes them pass, then the full feature suite is run to check for regressions.
 
 This is strict on purpose. Specs are an investment in **regeneration**: detailed, current specs let the same behavior be reproduced repeatedly from the spec alone. Skipping Phase 1 lets the source of truth drift; skipping Phase 2 lets the implementation diverge from the spec. Either break breaks the regeneration property.
+
+Unless specified by the user, 
 
 > If the user requests a code change that isn't covered by an existing scenario — even a "small" one — **stop and update the spec/feature first**. Do not negotiate the workflow down to "just do this one quickly." The user invested in this workflow specifically to keep specs load-bearing.
 
@@ -31,7 +34,7 @@ modspec does not prescribe a runner — the choice (cucumber, vitest-cucumber, j
 - Tests that assert behavior not described in any `.feature` file are forbidden — that signal is "go to Phase 1 and add a scenario," not "skip the spec."
 - `src/` code that contradicts a passing scenario is the bug, not the scenario.
 
-When entering a project, read its `package.json` / test config to learn how the project wired its runner. Match that convention; do not impose a different one.
+When entering a project, read its test config to learn how the project wired its runner. Match that convention; do not impose a different one.
 
 ## Project structure
 
@@ -80,7 +83,7 @@ Read the target spec, all its existing feature files, and any specs that depend 
 Summarize files created/modified/deleted. Flag downstream specs that may need attention.
 
 ### Phase 1 rules
-- Don't change features without asking — specs are owned by the user.
+- Don't change features without asking, specs are owned by the user.
 - Match existing style (step phrasing, scenario detail, naming).
 - Check downstream before removing.
 
@@ -97,10 +100,7 @@ Use this phase to make the (now-updated) feature scenarios pass.
 
 If implementing multiple specs, walk the dependency graph: start with specs that have no `depends_on` (roots) and work down. The features a spec `uses` from a dependency must already pass before that spec is implemented.
 
-### 2.2 List the scenarios
-Read every `.feature` file in the spec's features directory. Each `Scenario:` is a concrete behavior the implementation must satisfy. List them out — that's the implementation checklist.
-
-### 2.3 Red — confirm scenarios fail
+## 2.3 Red — confirm scenarios fail
 Run the feature suite. Every scenario for this spec must fail because the implementation doesn't exist yet. If a scenario passes before code is written, investigate — either the test setup is wrong or the feature is already implemented elsewhere.
 
 ### 2.4 Green — implement one scenario at a time
@@ -122,7 +122,7 @@ After implementing one spec, run *all* features — not just the one you worked 
 - Features are the contract. A passing suite means the implementation is correct; a failing scenario means the implementation is wrong (not the feature).
 - If a feature seems wrong → stop, ask the user, return to Phase 1 if they confirm a change.
 - Never silently skip or disable a scenario.
-- Step definitions must be thin — they translate Gherkin to calls into `src/`. No business logic in step definitions.
+- Step definitions must be thin, they translate Gherkin to calls into `src/`. No business logic in step definitions.
 
 ---
 
@@ -143,7 +143,13 @@ Each spec is a `.md` file inside the spec directory with YAML frontmatter and an
 
 A file without a `name` is silently skipped.
 
+```
+```
+
+
 ### Minimal spec
+
+```markdown
 ```markdown
 ---
 name: bootstrap
@@ -154,7 +160,7 @@ name: bootstrap
 ```markdown
 ---
 name: persistence
-description: SQLite database layer for local storage
+description: Database layer for local storage
 group: infrastructure
 tags: [database, storage]
 depends_on:
@@ -170,9 +176,10 @@ This spec covers the database abstraction layer.
 ## Decisions
 - Use SQLite for local-first storage
 - Migrations managed via versioned SQL files
+
+```
 ```
 
-The markdown body renders in the side panel when a node is clicked. Use it for design rationale, API notes, decisions, or anything useful that isn't a scenario.
 
 ### Dependency format
 
